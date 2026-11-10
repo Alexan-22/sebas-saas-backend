@@ -4,7 +4,6 @@ import com.tiendasebas.tiendasebas.config.TenantContext;
 import com.tiendasebas.tiendasebas.transferencias.TransferenciaManualService;
 import com.tiendasebas.tiendasebas.yape.PagoYapeManualService;
 import com.tiendasebas.tiendasebas.dto.*;
-import com.tiendasebas.tiendasebas.entity.ClientePresencial;
 import com.tiendasebas.tiendasebas.entity.DetalleVenta;
 import com.tiendasebas.tiendasebas.entity.DireccionEnvio;
 import com.tiendasebas.tiendasebas.entity.EstadoPedido;
@@ -127,7 +126,6 @@ public class VentaService {
         Venta venta = new Venta();
         venta.setTiendaId(tiendaId);
         venta.setUsuario(usuario);
-        venta.setClientePresencial(null);
         venta.setTipoVenta(TipoVenta.ONLINE);
         venta.setFechaVenta(LocalDateTime.now());
         venta.setEstado(("YAPE".equals(medioPago) || "TRANSFERENCIA".equals(medioPago)) ? "PAGO_PENDIENTE" : "REGISTRADA");
@@ -316,9 +314,7 @@ public class VentaService {
         Venta venta = ventaRepository.buscarPorIdYTiendaConBloqueo(idVenta, tiendaId)
                 .orElseThrow(() -> new CompraException("La venta no existe"));
 
-        if (obtenerTipoVentaSeguro(venta) == TipoVenta.PRESENCIAL) {
-            throw new CompraException("Una venta presencial ya se encuentra entregada");
-        }
+
 
         EstadoPedido estadoActual = obtenerEstadoPedidoSeguro(venta);
         validarTransicionEstado(estadoActual, estadoPedido);
@@ -328,7 +324,6 @@ public class VentaService {
         }
         cancelacionCodService.validarEstadoComercialCod(venta, estadoPedido);
         if ("YAPE".equals(venta.getMedioPago())
-                && obtenerTipoVentaSeguro(venta) == TipoVenta.ONLINE
                 && estadoPedido != EstadoPedido.RECIBIDO) {
             pagoYapeManualService.exigirAprobado(venta.getIdVenta());
         }
@@ -343,47 +338,34 @@ public class VentaService {
     // CONVERTIR VENTA A DTO
     // =========================================================
     private VentaResponse convertirVentaResponse(Venta venta) {
-        TipoVenta tipoVenta = obtenerTipoVentaSeguro(venta);
         Usuario usuario = venta.getUsuario();
-        ClientePresencial clientePresencial = venta.getClientePresencial();
-        Integer idUsuario = usuario != null ? usuario.getIdUsuario() : null;
-        Integer idClientePresencial = clientePresencial != null ? clientePresencial.getIdClientePresencial() : null;
-        String nombreCliente;
-        String apellidoCliente;
-        String correoCliente;
-        String tipoDocumento;
-        String numeroDocumento;
 
-        if (tipoVenta == TipoVenta.PRESENCIAL && clientePresencial != null) {
-            nombreCliente = clientePresencial.getNombre();
-            apellidoCliente = clientePresencial.getApellido();
-            correoCliente = clientePresencial.getCorreo();
-            tipoDocumento = clientePresencial.getTipoDocumento();
-            numeroDocumento = clientePresencial.getNumeroDocumento();
-        } else if (usuario != null) {
-            nombreCliente = usuario.getNombre();
-            apellidoCliente = usuario.getApellido();
-            correoCliente = usuario.getCorreo();
-            tipoDocumento = null;
-            numeroDocumento = null;
-        } else {
-            nombreCliente = "Cliente";
-            apellidoCliente = null;
-            correoCliente = null;
-            tipoDocumento = null;
-            numeroDocumento = null;
-        }
+        Integer idUsuario = usuario != null
+                ? usuario.getIdUsuario()
+                : null;
+
+        String nombreCliente = usuario != null
+                ? usuario.getNombre()
+                : "Cliente";
+
+        String apellidoCliente = usuario != null
+                ? usuario.getApellido()
+                : null;
+
+        String correoCliente = usuario != null
+                ? usuario.getCorreo()
+                : null;
 
         return new VentaResponse(
                 venta.getIdVenta(),
-                tipoVenta.name(),
+                obtenerTipoVentaSeguro(venta).name(),
                 idUsuario,
-                idClientePresencial,
+
                 nombreCliente,
                 apellidoCliente,
                 correoCliente,
-                tipoDocumento,
-                numeroDocumento,
+                null,
+                null,
                 venta.getFechaVenta(),
                 venta.getTotal(),
                 venta.getEstado(),
@@ -402,62 +384,35 @@ public class VentaService {
                 .map(this::convertirDetalleVentaResponse)
                 .toList();
 
-        TipoVenta tipoVenta = obtenerTipoVentaSeguro(venta);
         Usuario usuario = venta.getUsuario();
-        ClientePresencial clientePresencial = venta.getClientePresencial();
-        BigDecimal subtotal = obtenerSubtotalSeguro(venta, detalles);
-        BigDecimal costoDelivery = venta.getCostoDelivery() != null ? venta.getCostoDelivery() : BigDecimal.ZERO;
-        DireccionEnvioResponse direccionEnvio = convertirDireccionEnvioResponse(venta.getDireccionEnvio());
-        Integer idUsuario = usuario != null ? usuario.getIdUsuario() : null;
-        Integer idClientePresencial = clientePresencial != null ? clientePresencial.getIdClientePresencial() : null;
-        String nombreCliente;
-        String apellidoCliente;
-        String correoCliente;
-        String tipoDocumento;
-        String numeroDocumento;
-        String telefonoCliente;
 
-        if (tipoVenta == TipoVenta.PRESENCIAL && clientePresencial != null) {
-            nombreCliente = clientePresencial.getNombre();
-            apellidoCliente = clientePresencial.getApellido();
-            correoCliente = clientePresencial.getCorreo();
-            tipoDocumento = clientePresencial.getTipoDocumento();
-            numeroDocumento = clientePresencial.getNumeroDocumento();
-            telefonoCliente = clientePresencial.getTelefono();
-        } else if (usuario != null) {
-            nombreCliente = usuario.getNombre();
-            apellidoCliente = usuario.getApellido();
-            correoCliente = usuario.getCorreo();
-            tipoDocumento = null;
-            numeroDocumento = null;
-            telefonoCliente = null;
-        } else {
-            nombreCliente = "Cliente";
-            apellidoCliente = null;
-            correoCliente = null;
-            tipoDocumento = null;
-            numeroDocumento = null;
-            telefonoCliente = null;
-        }
+        BigDecimal subtotal = obtenerSubtotalSeguro(venta, detalles);
+
+        BigDecimal costoDelivery = venta.getCostoDelivery() != null
+                ? venta.getCostoDelivery()
+                : BigDecimal.ZERO;
+
+        DireccionEnvioResponse direccionEnvio =
+                convertirDireccionEnvioResponse(venta.getDireccionEnvio());
 
         return new DetalleCompraResponse(
                 venta.getIdVenta(),
                 venta.getFechaVenta(),
-                tipoVenta.name(),
+                obtenerTipoVentaSeguro(venta).name(),
                 subtotal,
                 costoDelivery,
                 venta.getTotal(),
                 venta.getEstado(),
                 obtenerEstadoPedidoSeguro(venta).name(),
                 venta.getMedioPago(),
-                idUsuario,
-                idClientePresencial,
-                nombreCliente,
-                apellidoCliente,
-                correoCliente,
-                tipoDocumento,
-                numeroDocumento,
-                telefonoCliente,
+                usuario != null ? usuario.getIdUsuario() : null,
+
+                usuario != null ? usuario.getNombre() : "Cliente",
+                usuario != null ? usuario.getApellido() : null,
+                usuario != null ? usuario.getCorreo() : null,
+                null,
+                null,
+                null,
                 direccionEnvio,
                 detalles
         );
@@ -544,16 +499,9 @@ public class VentaService {
     }
 
     private TipoVenta obtenerTipoVentaSeguro(Venta venta) {
-        if (venta.getTipoVenta() != null) {
-            return venta.getTipoVenta();
-        }
-        if (venta.getUsuario() != null) {
-            return TipoVenta.ONLINE;
-        }
-        if (venta.getClientePresencial() != null) {
-            return TipoVenta.PRESENCIAL;
-        }
-        return TipoVenta.ONLINE;
+        return venta.getTipoVenta() != null
+                ? venta.getTipoVenta()
+                : TipoVenta.ONLINE;
     }
 
     private EstadoPedido obtenerEstadoPedidoSeguro(Venta venta) {
