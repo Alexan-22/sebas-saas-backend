@@ -1,4 +1,4 @@
-# Sebas Collection | Backend
+# Sebas Saas Backend
 
 API REST para una plataforma de comercio electrónico y punto de venta de una tienda de ropa.
 
