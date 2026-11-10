@@ -50,4 +50,11 @@ public interface ProductoRepository extends JpaRepository<Producto, Integer> {
 
     // Productos con oferta
     List<Producto> findByEstadoTrueAndPrecioOfertaIsNotNullAndTiendaId(Long tiendaId);
+
+    // eliminar categoria
+    boolean existsByCategoriaIdCategoriaAndTiendaId(
+            Integer idCategoria,
+            Long tiendaId
+    );
+
 }

@@ -23,7 +23,7 @@ public class HomeColeccion {
     @Column(name = "id_coleccion")
     private Integer idColeccion;
 
-    @Column(name = "titulo", nullable = false, length = 100)
+    @Column(name = "titulo", nullable = true, length = 100)
     private String titulo;
 
     @Column(name = "etiqueta", length = 100)

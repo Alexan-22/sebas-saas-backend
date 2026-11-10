@@ -1,8 +1,12 @@
+
 package com.tiendasebas.tiendasebas.service;
 
 import com.tiendasebas.tiendasebas.config.TenantContext;
 import com.tiendasebas.tiendasebas.entity.Categoria;
 import com.tiendasebas.tiendasebas.repository.CategoriaRepository;
+import com.tiendasebas.tiendasebas.repository.ProductoRepository;
+
+import org.springframework.dao.DataIntegrityViolationException;
 import org.springframework.http.HttpStatus;
 import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
@@ -13,73 +17,166 @@ import java.util.List;
 
 @Service
 public class CategoriaGestionService {
-    private final CategoriaRepository repository;
 
-    public CategoriaGestionService(CategoriaRepository repository) {
+    private final CategoriaRepository repository;
+    private final ProductoRepository productoRepository;
+
+    public CategoriaGestionService(
+            CategoriaRepository repository,
+            ProductoRepository productoRepository
+    ) {
         this.repository = repository;
+        this.productoRepository = productoRepository;
     }
 
     private Long tiendaActual() {
         Long id = TenantContext.getCurrentTenant();
-        if (id == null) {
-            throw new ResponseStatusException(HttpStatus.NOT_FOUND, "Tienda no identificada");
+
+        if (id == null || id <= 0) {
+            throw new ResponseStatusException(
+                    HttpStatus.FORBIDDEN,
+                    "Tienda no identificada"
+            );
         }
+
         return id;
     }
 
     @Transactional(readOnly = true)
     public List<Categoria> listar() {
-        return repository.findByTiendaId(tiendaActual()).stream()
-                .sorted(Comparator.comparing(Categoria::getIdCategoria))
+        return repository.findByTiendaId(tiendaActual())
+                .stream()
+                .sorted(
+                        Comparator.comparing(Categoria::getIdCategoria)
+                )
                 .toList();
     }
 
     private String validarNombre(String nombre) {
         if (nombre == null || nombre.trim().isEmpty()) {
-            throw new ResponseStatusException(HttpStatus.BAD_REQUEST, "El nombre es obligatorio");
+            throw new ResponseStatusException(
+                    HttpStatus.BAD_REQUEST,
+                    "El nombre es obligatorio"
+            );
         }
+
         String limpio = nombre.trim();
+
         if (limpio.length() > 100) {
-            throw new ResponseStatusException(HttpStatus.BAD_REQUEST, "Maximo 100 caracteres");
+            throw new ResponseStatusException(
+                    HttpStatus.BAD_REQUEST,
+                    "Maximo 100 caracteres"
+            );
         }
+
         return limpio;
     }
 
-    private void comprobarDuplicado(Long tiendaId, Integer excludeId, String nombre) {
-        boolean existe = repository.findByTiendaId(tiendaId).stream()
-                .anyMatch(c -> !c.getIdCategoria().equals(excludeId)
-                        && c.getNombreCategoria().equalsIgnoreCase(nombre));
+    private void comprobarDuplicado(
+            Long tiendaId,
+            Integer excluirId,
+            String nombre
+    ) {
+        boolean existe = repository.findByTiendaId(tiendaId)
+                .stream()
+                .anyMatch(c ->
+                        !c.getIdCategoria().equals(excluirId) &&
+                                c.getNombreCategoria().equalsIgnoreCase(nombre)
+                );
+
         if (existe) {
-            throw new ResponseStatusException(HttpStatus.CONFLICT, "Esta categoria ya existe en la tienda");
+            throw new ResponseStatusException(
+                    HttpStatus.CONFLICT,
+                    "Esta categoria ya existe en la tienda"
+            );
         }
     }
 
     @Transactional
     public Categoria crear(String nombre, Boolean estado) {
         Long tiendaId = tiendaActual();
-        String nombreLimpio = validarNombre(nombre);
-        comprobarDuplicado(tiendaId, null, nombreLimpio);
+        String limpio = validarNombre(nombre);
+
+        comprobarDuplicado(tiendaId, null, limpio);
+
         Categoria nueva = new Categoria();
         nueva.setIdCategoria(null);
-        nueva.setNombreCategoria(nombreLimpio);
+        nueva.setNombreCategoria(limpio);
         nueva.setEstado(estado == null || estado);
-        // No confiar nunca en un tienda_id enviado desde Angular.
         nueva.setTiendaId(tiendaId);
+
         return repository.save(nueva);
     }
 
     @Transactional
-    public Categoria actualizar(Integer id, String nombre, Boolean estado) {
+    public Categoria actualizar(
+            Integer id,
+            String nombre,
+            Boolean estado
+    ) {
         Long tiendaId = tiendaActual();
-        Categoria c = repository.findByIdCategoriaAndTiendaId(id, tiendaId)
-                .orElseThrow(() -> new ResponseStatusException(HttpStatus.NOT_FOUND, "Categoria no encontrada"));
-        String nombreLimpio = validarNombre(nombre);
-        comprobarDuplicado(tiendaId, id, nombreLimpio);
-        c.setNombreCategoria(nombreLimpio);
+
+        Categoria categoria = repository
+                .findByIdCategoriaAndTiendaId(id, tiendaId)
+                .orElseThrow(() ->
+                        new ResponseStatusException(
+                                HttpStatus.NOT_FOUND,
+                                "Categoria no encontrada"
+                        )
+                );
+
+        String limpio = validarNombre(nombre);
+
+        comprobarDuplicado(tiendaId, id, limpio);
+
+        categoria.setNombreCategoria(limpio);
+
         if (estado != null) {
-            c.setEstado(estado);
+            categoria.setEstado(estado);
         }
-        // Nunca cambiar la tienda del registro al actualizar.
-        return repository.save(c);
+
+        return repository.save(categoria);
+    }
+
+    @Transactional
+    public void eliminar(Integer id) {
+        Long tiendaId = tiendaActual();
+
+        Categoria categoria = repository
+                .findByIdCategoriaAndTiendaId(id, tiendaId)
+                .orElseThrow(() ->
+                        new ResponseStatusException(
+                                HttpStatus.NOT_FOUND,
+                                "Categoria no encontrada"
+                        )
+                );
+
+        boolean tieneProductos = productoRepository
+                .existsByCategoriaIdCategoriaAndTiendaId(
+                        id,
+                        tiendaId
+                );
+
+        if (tieneProductos) {
+            throw new ResponseStatusException(
+                    HttpStatus.CONFLICT,
+                    "No puedes eliminar esta categoria porque " +
+                            "tiene productos asociados. Puedes desactivarla."
+            );
+        }
+
+        // La base de datos también protege otras
+        // referencias mediante sus claves foráneas.
+        try {
+            repository.delete(categoria);
+            repository.flush();
+        } catch (DataIntegrityViolationException e) {
+            throw new ResponseStatusException(
+                    HttpStatus.CONFLICT,
+                    "No se puede eliminar la categoria porque " +
+                            "tiene registros relacionados.",
+                    e
+            );
+        }
     }
 }
