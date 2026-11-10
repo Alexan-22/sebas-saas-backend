@@ -64,8 +64,7 @@ class CancelacionCodHttpJpaTest {
             com.tiendasebas.tiendasebas.controller.UsuarioController.class,
             com.tiendasebas.tiendasebas.service.UsuarioService.class,
             com.tiendasebas.tiendasebas.controller.SuperAdminPerfilController.class,
-            com.tiendasebas.tiendasebas.controller.ClientePresencialController.class,
-            com.tiendasebas.tiendasebas.service.ClientePresencialService.class,
+
             com.tiendasebas.tiendasebas.controller.VentaController.class,
             com.tiendasebas.tiendasebas.service.VentaService.class,
             com.tiendasebas.tiendasebas.transferencias.TransferenciaManualService.class,
@@ -434,60 +433,23 @@ class CancelacionCodHttpJpaTest {
             TenantContext.clear(); org.springframework.security.core.context.SecurityContextHolder.clearContext();
         }
     }
-    @Test void posRejectsForeignCustomerAndRollsBackMixedVariants() throws Exception {
-        Long foreignTenant = context.getBean(JwtService.class).getClaims(otherAdmin).get("tid", Number.class).longValue();
-        var manager = context.getBean(JpaTransactionManager.class);
-        Integer[] ids = new TransactionTemplate(manager).execute(status -> {
-            EntityManager em = EntityManagerFactoryUtils.getTransactionalEntityManager(manager.getEntityManagerFactory());
-            ClientePresencial own = new ClientePresencial(); own.setNombre("POS A"); own.setTipoDocumento("DNI");
-            own.setNumeroDocumento(UUID.randomUUID().toString().substring(0, 8)); own.setTiendaId(tenant); em.persist(own);
-            ClientePresencial foreign = new ClientePresencial(); foreign.setNombre("POS B"); foreign.setTipoDocumento("DNI");
-            foreign.setNumeroDocumento(UUID.randomUUID().toString().substring(0, 8)); foreign.setTiendaId(foreignTenant); em.persist(foreign);
-            ProductoTalla original = em.find(ProductoTalla.class, variantId);
-            Categoria category = new Categoria(); category.setNombreCategoria("B"); category.setTiendaId(foreignTenant); em.persist(category);
-            Producto product = new Producto(); product.setNombre("Producto B"); product.setPrecio(BigDecimal.TEN);
-            product.setTiendaId(foreignTenant); product.setCategoria(category); product.setGenero(original.getProducto().getGenero()); em.persist(product);
-            ProductoTalla variant = new ProductoTalla(); variant.setProducto(product); variant.setTalla(original.getTalla()); variant.setStock(9); em.persist(variant);
-            return new Integer[]{own.getIdClientePresencial(), foreign.getIdClientePresencial(), variant.getIdProductoTalla()};
-        });
-        int sales = db.queryForObject("SELECT count(*) FROM ventas", Integer.class);
-        int movements = db.queryForObject("SELECT count(*) FROM inventario_kardex", Integer.class);
-        String ownItem = "{\"idProductoTalla\":" + variantId + ",\"cantidad\":1}";
-        String foreignItem = "{\"idProductoTalla\":" + ids[2] + ",\"cantidad\":1}";
-        assertEquals(404, request("POST", "/api/ventas/admin/pos", admin, posBody(ids[1], ownItem)));
-        assertEquals(409, request("POST", "/api/ventas/admin/pos", admin, posBody(ids[0], foreignItem)));
-        assertEquals(409, request("POST", "/api/ventas/admin/pos", admin, posBody(ids[0], ownItem + "," + foreignItem)));
-        assertEquals(sales, db.queryForObject("SELECT count(*) FROM ventas", Integer.class));
-        assertEquals(movements, db.queryForObject("SELECT count(*) FROM inventario_kardex", Integer.class));
-        assertEquals(18, stock());
-        assertEquals(9, db.queryForObject("SELECT stock FROM producto_tallas WHERE id_producto_talla=?", Integer.class, ids[2]));
-        assertEquals(200, request("POST", "/api/ventas/admin/pos", admin, posBody(ids[0], ownItem)));
-        assertEquals(17, stock());
-        assertEquals(sales + 1, db.queryForObject("SELECT count(*) FROM ventas", Integer.class));
-    }
+    @Test void posYClientesPresencialesNoEstanDisponibles() throws Exception {
+        int ventasAntes = db.queryForObject(
+                "SELECT count(*) FROM ventas", Integer.class);
 
-    static String posBody(Integer customer, String items) {
-        return "{\"idClientePresencial\":" + customer + ",\"medioPago\":\"EFECTIVO\",\"items\":[" + items + "]}";
-    }
-    @Test void customerLookupCannotCrossTenants() throws Exception {
-        var manager = context.getBean(JpaTransactionManager.class);
-        Long foreignTenant = context.getBean(JwtService.class).getClaims(otherAdmin).get("tid", Number.class).longValue();
-        Integer foreignId = new TransactionTemplate(manager).execute(status -> {
-            EntityManager em = EntityManagerFactoryUtils.getTransactionalEntityManager(manager.getEntityManagerFactory());
-            ClientePresencial customer = new ClientePresencial();
-            customer.setNombre("Cliente B"); customer.setTipoDocumento("DNI");
-            customer.setNumeroDocumento(UUID.randomUUID().toString().substring(0, 8));
-            customer.setTiendaId(foreignTenant); em.persist(customer); return customer.getIdClientePresencial();
-        });
-        assertEquals(404, request("GET", "/api/clientes-presenciales/admin/" + foreignId, admin));
-        String update = "{\"nombre\":\"Actualizado B\",\"tipoDocumento\":\"DNI\",\"numeroDocumento\":\"" + foreignId + "\"}";
-        assertEquals(404, request("PUT", "/api/clientes-presenciales/admin/" + foreignId, admin, update));
-        assertEquals("Cliente B", db.queryForObject("SELECT nombre FROM clientes_presenciales WHERE id_cliente_presencial=?", String.class, foreignId));
-        host = otherHost;
-        assertEquals(200, request("GET", "/api/clientes-presenciales/admin/" + foreignId, otherAdmin));
-        assertEquals(200, request("PUT", "/api/clientes-presenciales/admin/" + foreignId, otherAdmin, update));
-        assertEquals("Actualizado B", db.queryForObject("SELECT nombre FROM clientes_presenciales WHERE id_cliente_presencial=?", String.class, foreignId));
-        assertEquals(18, stock()); assertEquals(0, audits());
+        assertEquals(404, request("POST",
+                "/api/ventas/admin/pos", admin, "{}"));
+
+        assertEquals(404, request("GET",
+                "/api/clientes-presenciales/admin", admin));
+
+        assertEquals(404, request("POST",
+                "/api/clientes-presenciales/admin", admin, "{}"));
+
+        assertEquals(ventasAntes, db.queryForObject(
+                "SELECT count(*) FROM ventas", Integer.class));
+
+        assertEquals(18, stock());
     }
     @Test void globalSuperAdminHasOnlyGlobalAccess() throws Exception {
         var manager = context.getBean(JpaTransactionManager.class);

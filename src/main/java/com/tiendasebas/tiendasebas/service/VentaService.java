@@ -33,7 +33,6 @@ public class VentaService {
     private final ProductoTallaRepository productoTallaRepository;
     private final UsuarioRepository usuarioRepository;
     private final DeliveryService deliveryService;
-    private final ClientePresencialService clientePresencialService;
     private final ContraEntregaService contraEntregaService;
     private final CancelacionCodService cancelacionCodService;
     private final PagoYapeManualService pagoYapeManualService;
@@ -44,7 +43,6 @@ public class VentaService {
                         ProductoTallaRepository productoTallaRepository,
                         UsuarioRepository usuarioRepository,
                         DeliveryService deliveryService,
-                        ClientePresencialService clientePresencialService,
                         ContraEntregaService contraEntregaService,
                         CancelacionCodService cancelacionCodService,
                         PagoYapeManualService pagoYapeManualService, TransferenciaManualService transferencias) {
@@ -53,7 +51,6 @@ public class VentaService {
         this.productoTallaRepository = productoTallaRepository;
         this.usuarioRepository = usuarioRepository;
         this.deliveryService = deliveryService;
-        this.clientePresencialService = clientePresencialService;
         this.contraEntregaService = contraEntregaService;
         this.cancelacionCodService = cancelacionCodService;
         this.pagoYapeManualService = pagoYapeManualService;
@@ -184,82 +181,6 @@ public class VentaService {
                 venta.getEstado(),
                 venta.getMedioPago(),
                 ("YAPE".equals(medioPago) ? "Pedido registrado. Pago Yape pendiente de verificacion del comerciante" : ("CONTRA_ENTREGA".equals(medioPago) ? "Pedido contra entrega registrado; pago pendiente" : "Compra realizada correctamente"))
-        );
-    }
-
-    // =========================================================
-    // ADMIN - REALIZAR VENTA PRESENCIAL / POS
-    // =========================================================
-    @Transactional
-    public VentaPosResponse realizarVentaPos(VentaPosRequest request) {
-        Long tiendaId = TenantContext.getCurrentTenant();
-
-        ClientePresencial cliente = clientePresencialService.buscarEntidadActiva(request.getIdClientePresencial());
-
-        if (request.getItems() == null || request.getItems().isEmpty()) {
-            throw new CompraException("Debe agregar al menos un producto");
-        }
-
-        String medioPago = validarMedioPagoPos(request.getMedioPago());
-
-        // =====================================================
-        // CREAR VENTA PRESENCIAL
-        // =====================================================
-        Venta venta = new Venta();
-        venta.setTiendaId(tiendaId);
-        venta.setUsuario(null);
-        venta.setClientePresencial(cliente);
-        venta.setTipoVenta(TipoVenta.PRESENCIAL);
-        venta.setFechaVenta(LocalDateTime.now());
-        venta.setEstado("REGISTRADA");
-        venta.setEstadoPedido(EstadoPedido.ENTREGADO);
-        venta.setMedioPago(medioPago);
-        venta.setDireccionEnvio(null);
-        venta.setSubtotal(BigDecimal.ZERO);
-        venta.setCostoDelivery(BigDecimal.ZERO);
-        venta.setTotal(BigDecimal.ZERO);
-        venta = ventaRepository.save(venta);
-
-        // =====================================================
-        // PROCESAR PRODUCTOS
-        // =====================================================
-        BigDecimal subtotal = BigDecimal.ZERO;
-        for (VentaPosItemRequest item : request.getItems().stream()
-        .sorted(java.util.Comparator.comparing(
-                VentaPosItemRequest::getIdProductoTalla,
-                java.util.Comparator.nullsFirst(java.util.Comparator.naturalOrder())))
-        .toList()) {
-            subtotal = subtotal.add(
-                    procesarItemVenta(venta, item.getIdProductoTalla(), item.getCantidad(), tiendaId)
-            );
-        }
-
-        // =====================================================
-        // TOTAL FINAL
-        // =====================================================
-        venta.setSubtotal(subtotal);
-        venta.setCostoDelivery(BigDecimal.ZERO);
-        venta.setTotal(subtotal);
-        venta = ventaRepository.save(venta);
-
-        return new VentaPosResponse(
-                venta.getIdVenta(),
-                venta.getFechaVenta(),
-                TipoVenta.PRESENCIAL.name(),
-                cliente.getIdClientePresencial(),
-                cliente.getNombre(),
-                cliente.getApellido(),
-                cliente.getTipoDocumento(),
-                cliente.getNumeroDocumento(),
-                cliente.getTelefono(),
-                cliente.getCorreo(),
-                venta.getSubtotal(),
-                venta.getCostoDelivery(),
-                venta.getTotal(),
-                venta.getMedioPago(),
-                venta.getEstado(),
-                venta.getEstadoPedido().name(),
-                "Venta presencial registrada correctamente"
         );
     }
 
@@ -590,17 +511,6 @@ public class VentaService {
         }
         String medioPagoNormalizado = medioPago.trim().toUpperCase();
         if (!medioPagoNormalizado.equals("YAPE") && !medioPagoNormalizado.equals("TARJETA") && !medioPagoNormalizado.equals("CONTRA_ENTREGA") && !medioPagoNormalizado.equals("TRANSFERENCIA")) {
-            throw new CompraException("Medio de pago no válido");
-        }
-        return medioPagoNormalizado;
-    }
-
-    private String validarMedioPagoPos(String medioPago) {
-        if (medioPago == null || medioPago.isBlank()) {
-            throw new CompraException("Debe seleccionar un medio de pago");
-        }
-        String medioPagoNormalizado = medioPago.trim().toUpperCase();
-        if (!medioPagoNormalizado.equals("EFECTIVO") && !medioPagoNormalizado.equals("YAPE") && !medioPagoNormalizado.equals("TARJETA")) {
             throw new CompraException("Medio de pago no válido");
         }
         return medioPagoNormalizado;

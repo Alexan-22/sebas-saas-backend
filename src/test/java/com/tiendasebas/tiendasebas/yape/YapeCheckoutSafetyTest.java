@@ -17,7 +17,7 @@ class YapeCheckoutSafetyTest {
   when(users.findByCorreoAndTiendaId("fixture@example.test",1L)).thenReturn(Optional.of(user));
   var pagos=mock(PagoYapeManualService.class);
   doThrow(new ResponseStatusException(HttpStatus.CONFLICT,"Yape no esta habilitado para esta tienda")).when(pagos).validarHabilitado(1L);
-  var service=new VentaService(sales,details,stock,users,null,null,null,null,pagos,null);
+  var service=new VentaService(sales,details,stock,users,null,null,null,pagos,null);
   var request=new CompraRequest();request.setMedioPago("YAPE");request.setItems(List.of(new CompraItemDto()));
   TenantContext.setCurrentTenant(1L);
   try {var ex=assertThrows(ResponseStatusException.class,()->service.realizarCompra(request,"fixture@example.test"));assertEquals(HttpStatus.CONFLICT,ex.getStatusCode());assertEquals("Yape no esta habilitado para esta tienda",ex.getReason());verifyNoInteractions(sales,details,stock);}

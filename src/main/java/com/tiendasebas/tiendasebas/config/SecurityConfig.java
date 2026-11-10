@@ -148,7 +148,6 @@ public class SecurityConfig {
                                 "/api/producto-tallas/admin/**",
                                 "/api/ventas/admin/**",
                                 "/api/usuarios/admin/**",
-                                "/api/clientes-presenciales/admin/**",
                                 "/api/imagenes/**",
                                 "/api/home/admin/**"
                         ).hasRole("ADMIN")
