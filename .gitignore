@@ -1,0 +1,79 @@
+
+# ==========================================
+# SEBAS COLLECTION SAAS - GITIGNORE
+# ==========================================
+
+# Maven y compilacion
+target/
+.mvn/wrapper/maven-wrapper.jar
+!**/src/main/**/target/
+!**/src/test/**/target/
+
+# Spring Tool Suite
+.apt_generated
+.classpath
+.factorypath
+.project
+.settings/
+.springBeans
+.sts4-cache/
+
+# IntelliJ IDEA
+.idea/
+*.iws
+*.iml
+*.ipr
+
+# NetBeans
+/nbproject/private/
+/nbbuild/
+/dist/
+/nbdist/
+/.nb-gradle/
+build/
+!**/src/main/**/build/
+!**/src/test/**/build/
+
+# Visual Studio Code
+.vscode/
+
+# Credenciales y archivos privados
+.env
+.env.*
+!.env.example
+*.backup-local
+*.local.properties
+
+# Archivos generados
+*.log
+logs/
+
+# Imagenes y archivos locales
+/uploads/
+
+# Archivos temporales
+*.tmp
+*.temp
+*.bak
+*.bak*
+/Microsoft/
+
+# Exclusiones de la publicacion limpia
+.env
+.env.*
+!.env.example
+*.bak*
+*.log
+*.pem
+*.key
+*.p12
+*.pfx
+ACCESO-LOCAL.txt
+/node_modules/
+/target/
+/dist/
+/coverage/
+/uploads/
+/Microsoft/
+/backup*/
+/.angular/
