@@ -118,7 +118,6 @@ public class SecurityConfig {
                         ).hasRole("ADMIN")
 
                                                 // B2B-SAAS-FASE2A: Configuracion y escalas de consulta publica
-                        .requestMatchers(HttpMethod.GET, "/api/b2b/public/**").permitAll()
                         // ENDPOINTS PUBLICOS
 
                         .requestMatchers(
@@ -139,7 +138,6 @@ public class SecurityConfig {
                         .requestMatchers("/api/v1/tiendas/admin/**").hasRole("ADMIN")
 
                                                 // B2B-SAAS-FASE2A: Escritura y administracion solo del propietario
-                        .requestMatchers("/api/b2b/admin/**").hasRole("ADMIN")
                         // ADMINISTRACION POR TIENDA
 
                         .requestMatchers(
@@ -175,7 +173,12 @@ public class SecurityConfig {
 
                         // RESTO DE ENDPOINTS
 
-                        .anyRequest().authenticated()
+                        .requestMatchers("/api/rbac/admin/**").hasRole("ADMIN")
+                        .requestMatchers("/api/rbac/empleado/**").hasRole("EMPLEADO")
+
+                        // EMPLEADO no accede a rutas generales
+                        // hasta implementar permisos RBAC efectivos.
+                        .anyRequest().hasAnyRole("ADMIN", "CLIENTE")
                 )
 
                 .exceptionHandling(errors -> errors
@@ -244,3 +247,4 @@ public class SecurityConfig {
         return source;
     }
 }
+

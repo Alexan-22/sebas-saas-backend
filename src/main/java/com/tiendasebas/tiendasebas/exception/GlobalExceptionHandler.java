@@ -5,6 +5,7 @@ import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 
 import org.springframework.http.HttpStatus;
+import org.springframework.security.access.AccessDeniedException;
 import org.springframework.http.HttpStatusCode;
 import org.springframework.http.ResponseEntity;
 
@@ -142,6 +143,18 @@ public class GlobalExceptionHandler {
     // para no alterar otros módulos existentes.
     // Revisaremos estas excepciones por tipo
     // durante una etapa de mejoras.
+
+    // RBAC: denegacion de permisos -> HTTP 403.
+    @ExceptionHandler(AccessDeniedException.class)
+    public ResponseEntity<Map<String, Object>>
+    manejarAccesoDenegado(AccessDeniedException exception) {
+
+        return respuesta(
+                HttpStatus.FORBIDDEN,
+                "Acceso denegado",
+                "No tiene permisos para realizar esta operacion"
+        );
+    }
 
     @ExceptionHandler(RuntimeException.class)
     public ResponseEntity<Map<String, Object>>
