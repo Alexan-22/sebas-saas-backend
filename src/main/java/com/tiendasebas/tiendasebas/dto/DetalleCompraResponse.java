@@ -22,7 +22,6 @@ public class DetalleCompraResponse {
     private String estadoPedido;
     private String medioPago;
     private Integer idUsuario;
-    private Integer idClientePresencial;
     private String nombreCliente;
     private String apellidoCliente;
     private String correoCliente;

@@ -6,6 +6,7 @@ import com.tiendasebas.tiendasebas.entity.HomeBanner;
 import com.tiendasebas.tiendasebas.entity.HomeColeccion;
 import com.tiendasebas.tiendasebas.repository.HomeBannerRepository;
 import com.tiendasebas.tiendasebas.repository.HomeColeccionRepository;
+
 import org.springframework.http.HttpStatus;
 import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
@@ -57,6 +58,7 @@ public class HomeService {
         }
     }
 
+    // Obligatorio SOLO para colecciones.
     private String validarTitulo(String titulo) {
         if (titulo == null || titulo.isBlank()) {
             throw new ResponseStatusException(
@@ -68,6 +70,11 @@ public class HomeService {
         return titulo.trim();
     }
 
+    // Para banners: permite null o cadena vacia.
+    private String textoOpcional(String texto) {
+        return texto == null ? null : texto.trim();
+    }
+
     private Integer normalizarOrden(Integer orden) {
         return orden == null || orden < 1 ? 1 : orden;
     }
@@ -76,7 +83,9 @@ public class HomeService {
         return estado == null ? true : estado;
     }
 
+    // =====================================================
     // BANNERS PUBLICOS
+    // =====================================================
 
     @Transactional(readOnly = true)
     public List<HomeBanner> listarBannersPublicos() {
@@ -93,7 +102,9 @@ public class HomeService {
                 .orElse(null);
     }
 
+    // =====================================================
     // BANNERS ADMINISTRATIVOS
+    // =====================================================
 
     @Transactional(readOnly = true)
     public List<HomeBanner> listarBannersAdmin() {
@@ -131,11 +142,19 @@ public class HomeService {
         HomeBanner banner = new HomeBanner();
 
         banner.setTiendaId(tiendaActual());
-        banner.setTitulo(validarTitulo(datos.getTitulo()));
-        banner.setEtiqueta(datos.getEtiqueta());
-        banner.setDescripcion(datos.getDescripcion());
-        banner.setTextoBoton(datos.getTextoBoton());
-        banner.setEnlaceBoton(datos.getEnlaceBoton());
+
+        banner.setTitulo(
+                datos.getTitulo() == null
+                        ? ""
+                        : datos.getTitulo().trim()
+        );
+        banner.setEtiqueta(textoOpcional(datos.getEtiqueta()));
+        banner.setDescripcion(textoOpcional(datos.getDescripcion()));
+
+        // Los banners nuevos ya no tienen boton superpuesto.
+        banner.setTextoBoton(null);
+        banner.setEnlaceBoton(null);
+
         banner.setOrden(normalizarOrden(datos.getOrden()));
         banner.setEstado(normalizarEstado(datos.getEstado()));
         banner.setImagen(null);
@@ -152,11 +171,14 @@ public class HomeService {
 
         HomeBanner banner = buscarBanner(idBanner);
 
-        banner.setTitulo(validarTitulo(datos.getTitulo()));
-        banner.setEtiqueta(datos.getEtiqueta());
-        banner.setDescripcion(datos.getDescripcion());
-        banner.setTextoBoton(datos.getTextoBoton());
-        banner.setEnlaceBoton(datos.getEnlaceBoton());
+        banner.setTitulo(textoOpcional(datos.getTitulo()));
+        banner.setEtiqueta(textoOpcional(datos.getEtiqueta()));
+        banner.setDescripcion(textoOpcional(datos.getDescripcion()));
+
+        // El cliente no puede reactivar los botones antiguos.
+        banner.setTextoBoton(null);
+        banner.setEnlaceBoton(null);
+
         banner.setOrden(normalizarOrden(datos.getOrden()));
         banner.setEstado(normalizarEstado(datos.getEstado()));
 
@@ -180,7 +202,9 @@ public class HomeService {
         return banner;
     }
 
+    // =====================================================
     // COLECCIONES PUBLICAS
+    // =====================================================
 
     @Transactional(readOnly = true)
     public List<HomeColeccion> listarColeccionesPublicas() {
@@ -189,7 +213,9 @@ public class HomeService {
         );
     }
 
+    // =====================================================
     // COLECCIONES ADMINISTRATIVAS
+    // =====================================================
 
     @Transactional(readOnly = true)
     public List<HomeColeccion> listarColeccionesAdmin() {
@@ -219,7 +245,7 @@ public class HomeService {
         HomeColeccion coleccion = new HomeColeccion();
 
         coleccion.setTiendaId(tiendaActual());
-        coleccion.setTitulo(validarTitulo(datos.getTitulo()));
+        coleccion.setTitulo(textoOpcional(datos.getTitulo()));
         coleccion.setEtiqueta(datos.getEtiqueta());
         coleccion.setTextoBoton(datos.getTextoBoton());
         coleccion.setEnlace(datos.getEnlace());
@@ -239,7 +265,7 @@ public class HomeService {
 
         HomeColeccion coleccion = buscarColeccion(idColeccion);
 
-        coleccion.setTitulo(validarTitulo(datos.getTitulo()));
+        coleccion.setTitulo(textoOpcional(datos.getTitulo()));
         coleccion.setEtiqueta(datos.getEtiqueta());
         coleccion.setTextoBoton(datos.getTextoBoton());
         coleccion.setEnlace(datos.getEnlace());
@@ -248,6 +274,7 @@ public class HomeService {
 
         return colecciones.save(coleccion);
     }
+
 
     @Transactional
     public HomeColeccion actualizarImagenColeccion(

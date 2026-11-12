@@ -5,8 +5,6 @@ import com.tiendasebas.tiendasebas.dto.CompraRequest;
 import com.tiendasebas.tiendasebas.dto.CompraResponse;
 import com.tiendasebas.tiendasebas.dto.DetalleCompraResponse;
 import com.tiendasebas.tiendasebas.dto.DetalleVentaResponse;
-import com.tiendasebas.tiendasebas.dto.VentaPosRequest;
-import com.tiendasebas.tiendasebas.dto.VentaPosResponse;
 import com.tiendasebas.tiendasebas.dto.VentaResponse;
 import com.tiendasebas.tiendasebas.service.VentaService;
 import jakarta.validation.Valid;
@@ -60,14 +58,6 @@ public class VentaController {
     @GetMapping("/admin")
     public ResponseEntity<List<VentaResponse>> listarTodas() {
         return ResponseEntity.ok(ventaService.listarTodas());
-    }
-
-    // =========================================================
-    // ADMIN - REALIZAR VENTA PRESENCIAL / POS
-    // =========================================================
-    @PostMapping("/admin/pos")
-    public ResponseEntity<VentaPosResponse> realizarVentaPos(@Valid @RequestBody VentaPosRequest request) {
-        return ResponseEntity.ok(ventaService.realizarVentaPos(request));
     }
 
     // =========================================================

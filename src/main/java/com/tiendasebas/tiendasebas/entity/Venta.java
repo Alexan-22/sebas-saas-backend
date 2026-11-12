@@ -42,9 +42,7 @@ public class Venta {
      * Este cliente pertenece al flujo físico/POS y no
      * necesita usuario, contraseña ni acceso a la tienda web.
      */
-    @ManyToOne(fetch = FetchType.LAZY)
-    @JoinColumn(name = "id_cliente_presencial")
-    private ClientePresencial clientePresencial;
+
 
     /*
      * =========================================================

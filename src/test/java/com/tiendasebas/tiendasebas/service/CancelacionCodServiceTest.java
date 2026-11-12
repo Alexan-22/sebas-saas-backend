@@ -115,8 +115,8 @@ class CancelacionCodServiceTest {
     }
 
     @Test
-    void rechazaVentaPresencial() {
-        venta.setTipoVenta(TipoVenta.PRESENCIAL);
+    void rechazaVentaSinTipoOnline() {
+        venta.setTipoVenta(null);
         falla(() -> servicio.cancelar(VENTA_ID, MOTIVO, "admin@test.local"), HttpStatus.CONFLICT);
         verifyNoInteractions(detalles, inventario, jdbc);
     }

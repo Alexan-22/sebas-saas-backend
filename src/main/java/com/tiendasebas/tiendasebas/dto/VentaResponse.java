@@ -14,7 +14,6 @@ public class VentaResponse {
     private Integer idVenta;
     private String tipoVenta;
     private Integer idUsuario;
-    private Integer idClientePresencial;
     private String nombreCliente;
     private String apellidoCliente;
     private String correoCliente;
