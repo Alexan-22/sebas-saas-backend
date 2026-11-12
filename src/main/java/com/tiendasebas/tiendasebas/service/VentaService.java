@@ -465,7 +465,7 @@ public class VentaService {
             throw new CompraException("Debe seleccionar un medio de pago");
         }
         String medioPagoNormalizado = medioPago.trim().toUpperCase();
-        if (!medioPagoNormalizado.equals("YAPE") && !medioPagoNormalizado.equals("TARJETA") && !medioPagoNormalizado.equals("CONTRA_ENTREGA") && !medioPagoNormalizado.equals("TRANSFERENCIA")) {
+        if (!medioPagoNormalizado.equals("YAPE") && !medioPagoNormalizado.equals("TRANSFERENCIA")) {
             throw new CompraException("Medio de pago no válido");
         }
         return medioPagoNormalizado;

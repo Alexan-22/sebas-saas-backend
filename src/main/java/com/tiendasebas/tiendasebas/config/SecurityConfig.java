@@ -124,6 +124,7 @@ public class SecurityConfig {
                                 HttpMethod.GET,
                                 "/api/transferencias/publico",
                                 "/api/v1/tiendas/config",
+                                "/api/v1/tiendas/cabecera",
                                 "/api/productos/public/**",
                                 "/api/producto-tallas/producto/**",
                                 "/api/producto-imagenes/producto/**",
