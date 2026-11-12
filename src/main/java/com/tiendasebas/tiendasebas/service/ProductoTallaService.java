@@ -70,6 +70,16 @@ public class ProductoTallaService {
         Producto producto = productoRepository.findByIdProductoAndTiendaId(idProducto, tiendaId)
                 .orElseThrow(() -> new ResponseStatusException(HttpStatus.NOT_FOUND, "Producto no encontrado"));
 
+        // Los productos con modalidad configurada usan la API de variantes.
+        // Se mantiene el registro anterior solo para productos legacy.
+        if (producto.getTipoVariantes() != null &&
+                !producto.getTipoVariantes().isBlank()) {
+            throw new ResponseStatusException(
+                    HttpStatus.CONFLICT,
+                    "Este producto utiliza variantes. Registre colores y tallas desde el nuevo editor."
+            );
+        }
+
         Talla talla = tallaRepository.findById(idTalla)
                 .orElseThrow(() -> new RuntimeException("Talla no encontrada"));
 

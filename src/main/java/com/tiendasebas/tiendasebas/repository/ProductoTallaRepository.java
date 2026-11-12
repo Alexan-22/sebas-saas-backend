@@ -22,7 +22,7 @@ public interface ProductoTallaRepository extends JpaRepository<ProductoTalla, In
             SELECT pt
             FROM ProductoTalla pt
             JOIN FETCH pt.producto p
-            JOIN FETCH pt.talla t
+            LEFT JOIN FETCH pt.talla t
             WHERE p.tiendaId = :tiendaId
             ORDER BY p.idProducto, t.idTalla
             """)
@@ -36,7 +36,7 @@ public interface ProductoTallaRepository extends JpaRepository<ProductoTalla, In
             SELECT pt
             FROM ProductoTalla pt
             JOIN FETCH pt.producto p
-            JOIN FETCH pt.talla
+            LEFT JOIN FETCH pt.talla
             WHERE pt.idProductoTalla = :idProductoTalla
               AND p.tiendaId = :tiendaId
             """)
@@ -46,7 +46,7 @@ public interface ProductoTallaRepository extends JpaRepository<ProductoTalla, In
     @Query("""
             SELECT pt FROM ProductoTalla pt
             JOIN FETCH pt.producto p
-            JOIN FETCH pt.talla
+            LEFT JOIN FETCH pt.talla
             WHERE pt.idProductoTalla = :id
               AND p.tiendaId = :tiendaId
             """)

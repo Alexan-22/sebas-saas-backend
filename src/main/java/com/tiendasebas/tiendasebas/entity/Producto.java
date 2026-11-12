@@ -57,4 +57,10 @@ public class Producto {
     //Mapeo de tienda_id en Entidades Existentes
     @Column(name = "tienda_id", nullable = false)
     private Long tiendaId;
+
+    @Column(name = "tipo_variantes", length = 20)
+    private String tipoVariantes;
+
+    @Column(name = "sistema_tallas", length = 30)
+    private String sistemaTallas;
 }

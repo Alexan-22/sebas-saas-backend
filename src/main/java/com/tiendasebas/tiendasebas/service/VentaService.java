@@ -26,6 +26,8 @@ import java.util.List;
 
 @Service
 public class VentaService {
+    @org.springframework.beans.factory.annotation.Autowired
+    private org.springframework.jdbc.core.JdbcTemplate jdbcVisibilidadColores;
 
     private final VentaRepository ventaRepository;
     private final DetalleVentaRepository detalleVentaRepository;
@@ -204,6 +206,15 @@ public class VentaService {
             throw new CompraException("El producto " + producto.getNombre() + " no está disponible");
         }
 
+        if (productoTalla.getIdColor() != null) {
+            Integer oculto = jdbcVisibilidadColores.queryForObject("""
+                SELECT COUNT(*) FROM public.saas_producto_colores_ocultos
+                WHERE tienda_id = ? AND id_producto = ? AND id_color = ?
+                """, Integer.class, tiendaId, producto.getIdProducto(), productoTalla.getIdColor());
+            if (oculto != null && oculto > 0) {
+                throw new CompraException("Este color no esta disponible para la venta");
+            }
+        }
         Integer stockActual = productoTalla.getStock();
         if (stockActual == null || stockActual <= 0) {
             throw new CompraException("Sin stock disponible para: " + producto.getNombre() + " - talla " + productoTalla.getTalla().getNombreTalla());

@@ -125,6 +125,8 @@ public class SecurityConfig {
                                 "/api/transferencias/publico",
                                 "/api/v1/tiendas/config",
                                 "/api/v1/tiendas/cabecera",
+                                "/api/v1/tiendas/variantes/producto/**",
+                                "/api/v1/tiendas/footer",
                                 "/api/productos/public/**",
                                 "/api/producto-tallas/producto/**",
                                 "/api/producto-imagenes/producto/**",

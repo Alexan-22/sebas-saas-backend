@@ -23,4 +23,7 @@ public class ProductoImagen {
 
     @Column(nullable = false)
     private Integer orden = 0;
+
+    @Column(name = "id_color")
+    private Long idColor;
 }
