@@ -8,6 +8,7 @@ import jakarta.servlet.http.HttpServletRequest;
 
 import org.springframework.beans.factory.annotation.Value;
 import org.springframework.stereotype.Component;
+import org.springframework.jdbc.core.JdbcTemplate;
 
 import java.util.Locale;
 import java.util.Optional;
@@ -25,6 +26,10 @@ public class TenantResolver {
     // ========================================
 
     private final TiendaRepository tiendas;
+    private final JdbcTemplate jdbc;
+
+    @Value("${app.tenant.custom-domains-enabled:false}")
+    private boolean customDomainsEnabled;
 
     // Dominio principal de la plataforma.
     // Ejemplo: plataforma.com
@@ -48,9 +53,10 @@ public class TenantResolver {
     // ========================================
 
     public TenantResolver(
-            TiendaRepository tiendas
+            TiendaRepository tiendas, JdbcTemplate jdbc
     ) {
         this.tiendas = tiendas;
+        this.jdbc = jdbc;
     }
 
     // ========================================
@@ -116,7 +122,7 @@ public class TenantResolver {
                     base.isEmpty() ||
                             !host.endsWith("." + base)
             ) {
-                return Optional.empty();
+                return resolverDominioPersonalizado(host);
             }
 
             // Extraer el subdominio.
@@ -172,8 +178,22 @@ public class TenantResolver {
         // TIENDA AUTORIZADA
         // ====================================
 
-        return Optional.ofNullable(
-                tienda.getId()
-        );
+        return Optional.ofNullable(tienda.getId());
+    }
+
+    private Optional<Long> resolverDominioPersonalizado(String host) {
+        if (!customDomainsEnabled || host.length() > 253
+                || !host.matches("(?:[a-z0-9](?:[a-z0-9-]{0,61}[a-z0-9])?\\.)+[a-z0-9](?:[a-z0-9-]{0,61}[a-z0-9])?")) {
+            return Optional.empty();
+        }
+
+        var coincidencias = jdbc.queryForList("""
+                SELECT d.tienda_id FROM public.dominios_saas d
+                JOIN public.tiendas t ON t.id = d.tienda_id
+                WHERE d.dominio = ? AND d.estado = 'VERIFICADO_DNS'
+                  AND d.verificado_en IS NOT NULL AND t.estado = 'ACTIVA'
+                LIMIT 2
+                """, Long.class, host);
+        return coincidencias.size() == 1 ? Optional.of(coincidencias.getFirst()) : Optional.empty();
     }
 }

@@ -158,9 +158,51 @@ class RbacEmpleadoGestionTest {
 
             assertFalse(resultado.activo());
             assertFalse(usuario.getEstado());
+            assertNotNull(usuario.getVersionSesion());
 
             verify(usuarios).saveAndFlush(usuario);
             verify(usuarios, never()).delete(any());
+        }
+    }
+
+    @Test
+    void restablecerPasswordActualizaElHashDelEmpleado() {
+        TenantContext.setCurrentTenant(1L);
+        try {
+            Usuario usuario = empleado(1L);
+            when(usuarios.findByIdUsuarioAndTiendaId(10, 1L))
+                    .thenReturn(Optional.of(usuario));
+            when(encoder.encode("NuevaClave123!")).thenReturn("nuevo-hash");
+
+            servicio.restablecerPassword(10, "NuevaClave123!");
+
+            assertEquals("nuevo-hash", usuario.getPasswordHash());
+            verify(usuarios).saveAndFlush(usuario);
+        } finally {
+            TenantContext.clear();
+        }
+    }
+
+    @Test
+    void restablecerPasswordRechazaPropietarioYEmpleadoDeOtraTienda() {
+        TenantContext.setCurrentTenant(1L);
+        try {
+            Usuario propietario = empleado(1L);
+            propietario.setRol(rol("ADMIN"));
+            when(usuarios.findByIdUsuarioAndTiendaId(10, 1L))
+                    .thenReturn(Optional.of(propietario));
+
+            var errorPropietario = assertThrows(ResponseStatusException.class,
+                    () -> servicio.restablecerPassword(10, "NuevaClave123!"));
+            var errorOtraTienda = assertThrows(ResponseStatusException.class,
+                    () -> servicio.restablecerPassword(11, "NuevaClave123!"));
+
+            assertEquals(HttpStatus.NOT_FOUND, errorPropietario.getStatusCode());
+            assertEquals(HttpStatus.NOT_FOUND, errorOtraTienda.getStatusCode());
+            verifyNoInteractions(encoder);
+            verify(usuarios, never()).saveAndFlush(any());
+        } finally {
+            TenantContext.clear();
         }
     }
 

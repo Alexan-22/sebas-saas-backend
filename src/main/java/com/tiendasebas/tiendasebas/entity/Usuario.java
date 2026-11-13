@@ -28,6 +28,19 @@ public class Usuario {
     @Column(nullable = false, length = 255)
     private String passwordHash;
 
+    @JsonIgnore
+    @Column(name = "version_sesion", length = 36)
+    private String versionSesion;
+
+    @JsonIgnore
+    public String getMaterialSesion() {
+        return versionSesion == null ? passwordHash : passwordHash + ":" + versionSesion;
+    }
+
+    public void revocarSesiones() {
+        versionSesion = java.util.UUID.randomUUID().toString();
+    }
+
     @ManyToOne
     @JoinColumn(name = "IdRol", nullable = false)
     private Rol rol;

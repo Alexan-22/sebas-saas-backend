@@ -8,6 +8,10 @@ import com.tiendasebas.tiendasebas.service.CancelacionCodService;
 import jakarta.persistence.EntityManager;
 import jakarta.persistence.EntityManagerFactory;
 import org.junit.jupiter.api.*;
+import org.junit.jupiter.api.io.CleanupMode;
+import org.junit.jupiter.api.io.TempDir;
+import com.tiendasebas.tiendasebas.service.HomeImagenService;
+import com.tiendasebas.tiendasebas.service.SupabaseStorageService;
 import org.springframework.boot.SpringApplication;
 import org.springframework.boot.autoconfigure.EnableAutoConfiguration;
 import org.springframework.boot.web.server.context.WebServerApplicationContext;
@@ -29,6 +33,8 @@ import javax.sql.DataSource;
 import java.math.BigDecimal;
 import java.net.Socket;
 import java.nio.charset.StandardCharsets;
+import java.nio.file.Files;
+import java.nio.file.Path;
 import java.time.LocalDateTime;
 import java.util.*;
 import java.util.concurrent.*;
@@ -42,6 +48,9 @@ class CancelacionCodHttpJpaTest {
     static final PostgreSQLContainer postgres = new PostgreSQLContainer("postgres:17-alpine")
             .withDatabaseName("cod_http_jpa").withUsername("test")
             .withPassword(UUID.randomUUID().toString());
+    @TempDir(cleanup = CleanupMode.ALWAYS)
+    static Path uploads;
+
     static ConfigurableApplicationContext context;
     static JdbcTemplate db;
     static int port;
@@ -61,6 +70,17 @@ class CancelacionCodHttpJpaTest {
     @EnableJpaRepositories("com.tiendasebas.tiendasebas.repository")
     @Import({SecurityConfig.class, JwtService.class, JwtAuthenticationFilter.class,
             TenantResolver.class, CancelacionCodController.class, CancelacionCodService.class,
+            com.tiendasebas.tiendasebas.controller.DisenoTiendaPublicoController.class,
+            com.tiendasebas.tiendasebas.controller.EditorTiendaController.class,
+            com.tiendasebas.tiendasebas.controller.FooterTiendaController.class,
+            com.tiendasebas.tiendasebas.service.EditorTiendaService.class,
+            com.tiendasebas.tiendasebas.service.HomeService.class,
+            com.tiendasebas.tiendasebas.service.CabeceraTiendaService.class,
+            com.tiendasebas.tiendasebas.service.FooterTiendaService.class,
+            com.tiendasebas.tiendasebas.controller.AuthController.class,
+            com.tiendasebas.tiendasebas.service.AuthService.class,
+            com.tiendasebas.tiendasebas.controller.RbacEmpleadoController.class,
+            com.tiendasebas.tiendasebas.service.RbacEmpleadoService.class,
             com.tiendasebas.tiendasebas.controller.UsuarioController.class,
             com.tiendasebas.tiendasebas.service.UsuarioService.class,
             com.tiendasebas.tiendasebas.controller.SuperAdminPerfilController.class,
@@ -76,6 +96,18 @@ class CancelacionCodHttpJpaTest {
         com.tiendasebas.tiendasebas.yape.PagoYapeManualService pagoYapeManualService(
                 org.springframework.jdbc.core.JdbcTemplate jdbc) {
             return new com.tiendasebas.tiendasebas.yape.PagoYapeManualService(jdbc);
+        }
+
+        @Bean
+        HomeImagenService imagenesEditor(SupabaseStorageService storage) {
+            return new HomeImagenService(storage);
+        }
+
+        @Bean
+        SupabaseStorageService almacenamientoExterno() {
+            return org.mockito.Mockito.mock(SupabaseStorageService.class, invocacion -> {
+                throw new AssertionError("La suite solo permite almacenamiento local");
+            });
         }
 
         @Bean
@@ -117,10 +149,16 @@ class CancelacionCodHttpJpaTest {
         environment.getPropertySources().addFirst(new MapPropertySource("testcontainers-only", Map.of(
                 "spring.datasource.url", url,
                 "spring.datasource.username", postgres.getUsername(),
-                "spring.datasource.password", postgres.getPassword())));
+                "spring.datasource.password", postgres.getPassword(),
+                "app.upload.dir", uploads.toAbsolutePath().toString(),
+                "app.storage.provider", "local")));
         application.setEnvironment(environment);
         application.addInitializers(ctx -> {
             var properties = ctx.getEnvironment();
+            if (!"local".equals(properties.getProperty("app.storage.provider"))
+                    || !uploads.toAbsolutePath().toString().equals(properties.getProperty("app.upload.dir"))) {
+                throw new IllegalStateException("El almacenamiento debe estar en el directorio temporal de JUnit");
+            }
             if (!url.equals(properties.getProperty("spring.datasource.url"))
                     || !postgres.getUsername().equals(properties.getProperty("spring.datasource.username"))
                     || !postgres.getPassword().equals(properties.getProperty("spring.datasource.password"))) {
@@ -134,9 +172,31 @@ class CancelacionCodHttpJpaTest {
                 "--spring.liquibase.enabled=false", "--spring.jpa.open-in-view=false",
                 "--app.jwt.secret=" + UUID.randomUUID() + UUID.randomUUID(),
                 "--app.jwt.expiration=600000", "--app.tenant.base-domain=example.test",
+                "--app.tenant.custom-domains-enabled=true",
                 "--app.cors.allowed-origins=http://example.test");
         port = ((WebServerApplicationContext) context).getWebServer().getPort();
         db = context.getBean(JdbcTemplate.class);
+        db.execute("""
+                CREATE TABLE public.dominios_saas (
+                    dominio text PRIMARY KEY, tienda_id bigint NOT NULL REFERENCES public.tiendas(id),
+                    estado text NOT NULL, verificado_en timestamptz
+                )
+                """);
+        new org.springframework.jdbc.datasource.init.ResourceDatabasePopulator(
+                new org.springframework.core.io.ClassPathResource("db/manual/V13__cabecera_saas.sql"),
+                new org.springframework.core.io.ClassPathResource("db/manual/V14__promo_bar_dos_modos.sql"),
+                new org.springframework.core.io.ClassPathResource("db/manual/V19__editor_tienda.sql"))
+                .execute(context.getBean(DataSource.class));
+        db.execute("""
+                CREATE TABLE public.saas_footer_config (
+                    tienda_id bigint PRIMARY KEY REFERENCES public.tiendas(id),
+                    descripcion text, texto_contacto text, horario text, correo text,
+                    facebook_url text, instagram_url text, tiktok_url text, beneficios_activos boolean,
+                    beneficio_envios text, beneficio_pagos text, beneficio_atencion text,
+                    newsletter_activo boolean, newsletter_titulo text, newsletter_descripcion text,
+                    texto_legal text, actualizado_en timestamptz
+                )
+                """);
         new org.springframework.jdbc.datasource.init.ResourceDatabasePopulator(
                 new org.springframework.core.io.ClassPathResource("db/migration/V4__pagos_simulados_persistentes.sql"))
                 .execute(context.getBean(DataSource.class));
@@ -167,6 +227,8 @@ class CancelacionCodHttpJpaTest {
                     .getResultStream().findFirst().orElseGet(() -> role(em, "ADMIN"));
             Rol customer = em.createQuery("select r from Rol r where r.nombreRol='CLIENTE'", Rol.class)
                     .getResultStream().findFirst().orElseGet(() -> role(em, "CLIENTE"));
+            em.createQuery("select r from Rol r where r.nombreRol='EMPLEADO'", Rol.class)
+                    .getResultStream().findFirst().orElseGet(() -> role(em, "EMPLEADO"));
             admin = user(em, role, tenant, "admin-" + suffix);
             client = user(em, customer, tenant, "client-" + suffix);
             otherAdmin = user(em, role, other.getId(), "other-" + suffix);
@@ -194,7 +256,7 @@ class CancelacionCodHttpJpaTest {
         Usuario user = new Usuario(); user.setNombre("Fixture"); user.setApellido("Fixture");
         user.setCorreo(name + "@example.test"); user.setPasswordHash("unused-test-fixture");
         user.setRol(role); user.setTiendaId(shop); em.persist(user);
-        return context.getBean(JwtService.class).generateToken(user.getIdUsuario(), user.getCorreo(), role.getNombreRol(), shop);
+        return context.getBean(JwtService.class).generateToken(user.getIdUsuario(), user.getCorreo(), role.getNombreRol(), shop, user.getPasswordHash());
     }
 
     int cancel(String token) throws Exception {
@@ -210,13 +272,18 @@ class CancelacionCodHttpJpaTest {
     }
     record WireResponse(int status, String wire) {}
     WireResponse response(String method, String path, String token, String json) throws Exception {
-        byte[] body = json.getBytes(StandardCharsets.UTF_8);
+        return response(method, path, token, json, "application/json");
+    }
+
+    private WireResponse response(String method, String path, String token, String contenido, String tipo)
+            throws Exception {
+        byte[] body = contenido.getBytes(StandardCharsets.UTF_8);
         try (Socket socket = new Socket("127.0.0.1", port)) {
             socket.setSoTimeout(30000);
             String authorization = token == null ? "" : "Authorization: Bearer " + token + "\r\n";
             String headers = method + " " + path + " HTTP/1.1\r\n"
                     + "Host: " + host + "\r\n" + authorization
-                    + "Content-Type: application/json\r\nContent-Length: " + body.length + "\r\nConnection: close\r\n\r\n";
+                    + "Content-Type: " + tipo + "\r\nContent-Length: " + body.length + "\r\nConnection: close\r\n\r\n";
             socket.getOutputStream().write(headers.getBytes(StandardCharsets.US_ASCII));
             socket.getOutputStream().write(body); socket.getOutputStream().flush();
             String response = new String(socket.getInputStream().readAllBytes(), StandardCharsets.UTF_8);
@@ -478,6 +545,368 @@ class CancelacionCodHttpJpaTest {
         assertEquals(Boolean.TRUE, db.queryForObject("SELECT estado FROM usuarios WHERE id_usuario=?", Boolean.class, foreignId));
         assertEquals(403, request("GET", "/api/usuarios/admin", client));
         assertEquals(18, stock()); assertEquals(0, audits());
+    }
+
+    @Test
+    void editorAislaBorradoresPublicaYPermiteRestaurar() throws Exception {
+        String editor = "/api/v1/tiendas/admin/editor";
+        String footer = "/api/v1/tiendas/footer";
+        String borrador = editor + "/borrador";
+        String texto = "Texto exclusivo de esta boutique";
+        String datos = """
+                {"descripcion":"%s","beneficiosActivos":true,"newsletterActivo":false}
+                """.formatted(texto);
+
+        assertEquals(403, request("GET", borrador, client, ""));
+        assertEquals(403, request("PUT", borrador + "/footer?revision=0", client, datos));
+        assertEquals(403, request("POST", editor + "/publicar?revision=0", client, ""));
+        assertEquals(403, request("POST", editor + "/versiones/0/restaurar?revision=0", client, ""));
+        assertEquals(401, request("GET", borrador, otherAdmin, ""));
+        WireResponse guardado = response("PUT", borrador + "/footer?revision=0", admin, datos);
+        assertEquals(200, guardado.status());
+        assertTrue(response("GET", borrador, admin, "").wire().contains(texto));
+        WireResponse footerPublico = response("GET", footer, null, "");
+        assertEquals(200, footerPublico.status());
+        assertFalse(cuerpo(footerPublico).contains(texto));
+        assertEquals(409, request("PUT", borrador + "/footer?revision=0", admin, datos));
+
+        var matcher = java.util.regex.Pattern.compile("\"revision\"\\s*:\\s*(\\d+)").matcher(guardado.wire());
+        assertTrue(matcher.find());
+        String revision = matcher.group(1);
+        String home = "/api/home/public/diseno";
+        String orden = "[\"COLECCIONES\",\"BANNERS\",\"CATEGORIAS\",\"PRODUCTOS\",\"CIERRE\",\"BENEFICIOS\"]";
+        assertEquals(400, request("PUT", borrador + "/home?revision=" + revision, admin, "[]"));
+        WireResponse ordenGuardado = response("PUT", borrador + "/home?revision=" + revision, admin, orden);
+        assertEquals(200, ordenGuardado.status());
+        var nuevaRevision = java.util.regex.Pattern.compile("\"revision\"\\s*:\\s*(\\d+)")
+                .matcher(ordenGuardado.wire());
+        assertTrue(nuevaRevision.find());
+        revision = nuevaRevision.group(1);
+        assertFalse(response("GET", home, null, "").wire().contains(orden));
+        assertTrue(response("GET", borrador, admin, "").wire().contains(orden));
+
+        String promo = "Promoción exclusiva del editor";
+        var configuracion = context.getBean(com.tiendasebas.tiendasebas.service.CabeceraTiendaService.class)
+                .porDefecto();
+        var cabecera = new com.tiendasebas.tiendasebas.service.CabeceraTiendaService.CabeceraConfig(
+                true, configuracion.promoModo(), configuracion.promoVelocidad(),
+                List.of(promo), configuracion.menuItems());
+        var json = context.getBean(tools.jackson.databind.ObjectMapper.class);
+        WireResponse cabeceraGuardada = response("PUT", borrador + "/cabecera?revision=" + revision,
+                admin, json.writeValueAsString(cabecera));
+        assertEquals(200, cabeceraGuardada.status());
+        var revisionCabecera = java.util.regex.Pattern.compile("\"revision\"\\s*:\\s*(\\d+)")
+                .matcher(cabeceraGuardada.wire());
+        assertTrue(revisionCabecera.find());
+        revision = revisionCabecera.group(1);
+
+        String hostInicial = host;
+        host = otherHost;
+        try {
+            WireResponse borradorAjeno = response("GET", borrador, otherAdmin, "");
+            assertEquals(200, borradorAjeno.status());
+            assertFalse(cuerpo(borradorAjeno).contains(texto));
+            assertFalse(cuerpo(borradorAjeno).contains(promo));
+            assertFalse(cuerpo(borradorAjeno).contains(orden));
+            assertEquals(409, request("POST", editor + "/publicar?revision=" + revision, otherAdmin, ""));
+        } finally {
+            host = hostInicial;
+        }
+
+        String estadoAnterior = cuerpo(response("GET", home, null, ""));
+        assertFalse(estadoAnterior.contains(promo));
+        db.execute("""
+                ALTER TABLE public.saas_footer_config ADD CONSTRAINT editor_test_rechazar_footer
+                CHECK (descripcion <> 'Texto exclusivo de esta boutique')
+                """);
+        try {
+            assertEquals(500, request("POST", editor + "/publicar?revision=" + revision, admin, ""));
+            assertEquals(estadoAnterior, cuerpo(response("GET", home, null, "")));
+            assertTrue(response("GET", borrador, admin, "").wire().contains(orden));
+            assertEquals(0, db.queryForObject("""
+                    SELECT count(*) FROM public.saas_editor_versiones WHERE tienda_id = ?
+                    """, Integer.class, tenant));
+        } finally {
+            db.execute("ALTER TABLE public.saas_footer_config DROP CONSTRAINT editor_test_rechazar_footer");
+        }
+
+        assertEquals(200, request("POST", editor + "/publicar?revision=" + revision, admin, ""));
+        WireResponse publicacion = response("GET", home, null, "");
+        assertEquals(200, publicacion.status());
+        String disenoPublicado = cuerpo(publicacion);
+        assertTrue(disenoPublicado.contains(orden));
+        assertTrue(disenoPublicado.contains(texto));
+        assertTrue(disenoPublicado.contains(promo));
+        assertTrue(response("GET", footer, null, "").wire().contains(texto));
+        assertEquals(409, request("POST", editor + "/publicar?revision=" + revision, admin, ""));
+
+        host = otherHost;
+        try {
+            assertFalse(response("GET", borrador, otherAdmin, "").wire().contains(texto));
+            assertFalse(response("GET", footer, null, "").wire().contains(texto));
+            assertEquals(409, request("POST", editor + "/publicar?revision=" + revision, otherAdmin, ""));
+            assertEquals(404, request("POST", editor + "/versiones/1/restaurar?revision=0", otherAdmin, ""));
+        } finally {
+            host = hostInicial;
+        }
+
+        WireResponse historial = response("GET", editor + "/versiones", admin, "");
+        assertEquals(200, historial.status());
+        assertTrue(cuerpo(historial).contains("\"version\":1"));
+        assertTrue(cuerpo(historial).contains("\"version\":0"));
+        assertEquals(200, request("POST", editor + "/versiones/0/restaurar?revision=0", admin, ""));
+        WireResponse restaurado = response("GET", borrador, admin, "");
+        assertEquals(200, restaurado.status());
+        assertFalse(cuerpo(restaurado).contains(texto));
+        assertFalse(cuerpo(restaurado).contains(promo));
+        assertFalse(cuerpo(restaurado).contains(orden));
+        assertEquals(disenoPublicado,
+                cuerpo(response("GET", home, null, "")));
+    }
+
+    @Test
+    void portadaPublicaImagenMovilYColeccionSoloDeLaTienda() throws Exception {
+        int banner = db.queryForObject("""
+                INSERT INTO home_banner (tienda_id, imagen, orden, estado)
+                VALUES (?, 'editor-escritorio.png', 1, true) RETURNING id_banner
+                """, Integer.class, tenant);
+        db.update("""
+                INSERT INTO home_banner (tienda_id, imagen, orden, estado)
+                VALUES (?, 'editor-movil.png', 2, false)
+                """, tenant);
+        int coleccion = db.queryForObject("""
+                INSERT INTO home_colecciones (tienda_id, titulo, imagen, orden, estado)
+                VALUES (?, 'Original', 'editor-coleccion.png', 1, true) RETURNING id_coleccion
+                """, Integer.class, tenant);
+        String editor = "/api/v1/tiendas/admin/editor";
+        String endpoint = editor + "/borrador/portada?revision=0";
+        String datos = """
+                {"banners":[{"id":%d,"orden":1,"visible":true,"escritorio":"editor-escritorio.png",
+                "movil":"editor-movil.png"}],"colecciones":[{"id":%d,"orden":1,"visible":true,
+                "titulo":"Colección del editor","imagen":"editor-coleccion.png"}]}
+                """.formatted(banner, coleccion);
+
+        String publico = "/api/home/public/diseno";
+        assertEquals(400, request("PUT", endpoint, admin, datos.replace("editor-movil.png", "imagen-ajena.png")));
+        String hostOriginal = host;
+        host = otherHost;
+        try {
+            assertEquals(404, request("PUT", endpoint, otherAdmin, datos));
+        } finally {
+            host = hostOriginal;
+        }
+
+        WireResponse guardado = response("PUT", endpoint, admin, datos);
+        assertEquals(200, guardado.status());
+        assertTrue(cuerpo(guardado).contains("editor-movil.png"));
+        assertFalse(cuerpo(response("GET", publico, null, "")).contains("editor-movil.png"));
+        var revision = java.util.regex.Pattern.compile("\"revision\"\\s*:\\s*(\\d+)").matcher(cuerpo(guardado));
+        assertTrue(revision.find());
+        String rutaImagen = editor + "/borrador/portada/MOVIL/" + banner + "/imagen?revision=" + revision.group(1);
+        String multipart = "--editor-test\r\nContent-Disposition: form-data; name=\"imagen\"; filename=\"prueba.png\"\r\n"
+                + "Content-Type: image/png\r\n\r\nfixture\r\n--editor-test--\r\n";
+        String tipo = "multipart/form-data; boundary=editor-test";
+        assertEquals(401, response("POST", rutaImagen, otherAdmin, multipart, tipo).status());
+        assertEquals(403, response("POST", rutaImagen, client, multipart, tipo).status());
+        WireResponse carga = response("POST", rutaImagen, admin, multipart, tipo);
+        assertEquals(200, carga.status());
+        Path directorio = uploads.resolve("home/editor").resolve(tenant.toString());
+        Path archivo;
+        try (var archivos = Files.list(directorio)) {
+            List<Path> guardados = archivos.toList();
+            assertEquals(1, guardados.size());
+            archivo = guardados.getFirst();
+        }
+        assertEquals("fixture", Files.readString(archivo));
+        String imagenNueva = "home/editor/" + tenant + "/" + archivo.getFileName();
+        assertTrue(cuerpo(carga).contains(imagenNueva));
+        assertFalse(cuerpo(response("GET", publico, null, "")).contains(imagenNueva));
+        assertEquals(409, response("POST", rutaImagen, admin, multipart, tipo).status());
+        try (var archivos = Files.list(directorio)) {
+            assertEquals(1, archivos.count());
+        }
+        assertEquals(200, request("POST", editor + "/publicar?revision=" + revisionEditor(carga), admin, ""));
+
+        String portada = cuerpo(response("GET", publico, null, ""));
+        assertTrue(portada.contains("editor-escritorio.png"));
+        assertTrue(portada.contains(imagenNueva));
+        assertTrue(portada.contains("editor-coleccion.png"));
+        assertTrue(portada.contains("Colección del editor"));
+        db.update("UPDATE home_banner SET imagen = ? WHERE id_banner = ? AND tienda_id = ?",
+                "editor-reemplazo.png", banner, tenant);
+        assertTrue(cuerpo(response("GET", publico, null, "")).contains("editor-escritorio.png"));
+        assertEquals(200, request("POST", editor + "/versiones/1/restaurar?revision=0", admin, ""));
+        assertTrue(cuerpo(response("GET", editor + "/borrador", admin, "")).contains(imagenNueva));
+        assertTrue(Files.isRegularFile(archivo));
+    }
+
+    @Test
+    void temaYSubmenusSoloSeVenAlPublicar() throws Exception {
+        String editor = "/api/v1/tiendas/admin/editor";
+        String publico = "/api/home/public/diseno";
+        String tema = """
+                {"primario":"#334455","secundario":"#ddeeff","tipografia":"SERIF"}
+                """;
+        assertEquals(400, request("PUT", editor + "/borrador/tema?revision=0", admin,
+                tema.replace("SERIF", "fuente libre")));
+        WireResponse guardado = response("PUT", editor + "/borrador/tema?revision=0", admin, tema);
+        assertEquals(200, guardado.status());
+        assertFalse(cuerpo(response("GET", publico, null, "")).contains("#334455"));
+
+        var servicio = context.getBean(com.tiendasebas.tiendasebas.service.CabeceraTiendaService.class);
+        var json = context.getBean(tools.jackson.databind.ObjectMapper.class);
+        String cabecera = json.writeValueAsString(servicio.porDefecto()).replaceFirst(
+                "\"submenus\":\\[\\]", "\"submenus\":[{\"texto\":\"Vestidos\",\"busqueda\":\"vestido\"}]");
+        WireResponse menu = response("PUT", editor + "/borrador/cabecera?revision=" + revisionEditor(guardado),
+                admin, cabecera);
+        assertEquals(200, menu.status());
+        assertTrue(cuerpo(menu).contains("Vestidos"));
+        assertFalse(cuerpo(response("GET", publico, null, "")).contains("Vestidos"));
+
+        assertEquals(200, request("POST", editor + "/publicar?revision=" + revisionEditor(menu), admin, ""));
+        String publicado = cuerpo(response("GET", publico, null, ""));
+        assertTrue(publicado.contains("Vestidos"));
+        assertTrue(publicado.contains("#334455"));
+        assertTrue(publicado.contains("SERIF"));
+    }
+
+    @Test
+    void dominioPersonalizadoExigeVerificacionYTiendaActiva() throws Exception {
+        String dominio = "boutique-" + UUID.randomUUID() + ".test";
+        db.update("""
+                INSERT INTO public.dominios_saas (dominio, tienda_id, estado)
+                VALUES (?, ?, 'PENDIENTE')
+                """, dominio, tenant);
+        host = dominio;
+        String editor = "/api/v1/tiendas/admin/editor/borrador";
+
+        assertEquals(404, request("GET", editor, admin, ""));
+        db.update("""
+                UPDATE public.dominios_saas SET estado = 'VERIFICADO_DNS', verificado_en = now()
+                WHERE dominio = ?
+                """, dominio);
+        assertEquals(200, request("GET", editor, admin, ""));
+        assertEquals(401, request("GET", editor, otherAdmin, ""));
+        db.update("UPDATE tiendas SET estado = 'SUSPENDIDA' WHERE id = ?", tenant);
+        assertEquals(404, request("GET", editor, admin, ""));
+    }
+
+    private String revisionEditor(WireResponse respuesta) {
+        var revision = java.util.regex.Pattern.compile("\"revision\"\\s*:\\s*(\\d+)").matcher(cuerpo(respuesta));
+        assertTrue(revision.find());
+        return revision.group(1);
+    }
+
+    private String cuerpo(WireResponse respuesta) {
+        String wire = respuesta.wire();
+        return wire.substring(wire.indexOf("\r\n\r\n") + 4);
+    }
+
+    private static final String EMPLEADOS = "/api/rbac/admin/empleados";
+    private static final String CLAVE_INICIAL = "ClaveInicial123!";
+    private static final String CLAVE_NUEVA = "{\"password\":\"ClaveNueva123!\"}";
+
+    @Test
+    void restablecimientoRevocaJwtYPermiteIngresarConLaNuevaClave() throws Exception {
+        String correo = crearEmpleadoHttp(admin);
+        String anterior = loginEmpleado(correo, CLAVE_INICIAL);
+        String recurso = recursoEmpleado(anterior);
+
+        assertEquals(204, request("PATCH", recurso + "/contrasena", admin, CLAVE_NUEVA));
+        assertEquals(401, request("GET", EMPLEADOS, anterior));
+        assertEquals(403, request("GET", EMPLEADOS, loginEmpleado(correo, "ClaveNueva123!")));
+    }
+
+    @Test
+    void reactivarEmpleadoNoRestauraSuJwtAnterior() throws Exception {
+        String correo = crearEmpleadoHttp(admin);
+        String anterior = loginEmpleado(correo, CLAVE_INICIAL);
+        String estado = recursoEmpleado(anterior) + "/estado";
+
+        int empleadoId = idUsuario(anterior);
+        assertNull(versionSesion(empleadoId));
+        assertEquals(200, request("PATCH", estado, admin, "{\"activo\":false}"));
+        String versionDesactivada = versionSesion(empleadoId);
+        assertNotNull(versionDesactivada);
+        assertEquals(versionDesactivada, UUID.fromString(versionDesactivada).toString());
+        assertEquals(401, request("GET", EMPLEADOS, anterior));
+        assertEquals(200, request("PATCH", estado, admin, "{\"activo\":true}"));
+        assertEquals(versionDesactivada, versionSesion(empleadoId));
+        assertEquals(401, request("GET", EMPLEADOS, anterior));
+        String renovado = loginEmpleado(correo, CLAVE_INICIAL);
+        assertEquals(403, request("GET", EMPLEADOS, renovado));
+
+        String estadoGeneral = "/api/usuarios/admin/" + idUsuario(renovado) + "/estado?estado=";
+        assertEquals(200, request("PUT", estadoGeneral + "false", admin, "{}"));
+        String versionRotada = versionSesion(empleadoId);
+        assertNotNull(versionRotada);
+        assertNotEquals(versionDesactivada, versionRotada);
+        assertEquals(401, request("GET", EMPLEADOS, renovado));
+        assertEquals(200, request("PUT", estadoGeneral + "true", admin, "{}"));
+        assertEquals(401, request("GET", EMPLEADOS, renovado));
+    }
+
+    @Test
+    void soloElPropietarioDelTenantPuedeRestablecerLaClaveDeUnEmpleado() throws Exception {
+        String originalHost = host;
+        String empleado;
+        host = otherHost;
+        try {
+            empleado = loginEmpleado(crearEmpleadoHttp(otherAdmin), CLAVE_INICIAL);
+        } finally {
+            host = originalHost;
+        }
+        String ajeno = recursoEmpleado(empleado) + "/contrasena";
+        String propietario = recursoEmpleado(admin) + "/contrasena";
+        String propio = loginEmpleado(crearEmpleadoHttp(admin), CLAVE_INICIAL);
+
+        assertEquals(404, request("PATCH", ajeno, admin, CLAVE_NUEVA));
+        assertEquals(404, request("PATCH", propietario, admin, CLAVE_NUEVA));
+        assertEquals(401, request("PATCH", ajeno, otherAdmin, CLAVE_NUEVA));
+        assertEquals(403, request("PATCH", recursoEmpleado(propio) + "/contrasena", propio, CLAVE_NUEVA));
+        assertEquals(403, request("PATCH", recursoEmpleado(propio) + "/contrasena", client, CLAVE_NUEVA));
+        assertEquals(403, request("GET", EMPLEADOS, propio));
+    }
+
+    private String crearEmpleadoHttp(String propietario) throws Exception {
+        String correo = "empleado-" + UUID.randomUUID() + "@example.test";
+        String json = """
+                {"nombre":"Prueba","apellido":"Empleado","correo":"%s","password":"%s"}
+                """.formatted(correo, CLAVE_INICIAL);
+        WireResponse respuesta = response("POST", EMPLEADOS, propietario, json);
+        assertEquals(201, respuesta.status(), () -> {
+            int inicioCuerpo = respuesta.wire().indexOf("\r\n\r\n");
+            String cuerpo = (inicioCuerpo < 0 ? "" : respuesta.wire().substring(inicioCuerpo + 4))
+                    .replace(CLAVE_INICIAL, "[omitido]")
+                    .replace(propietario, "[omitido]");
+            return "Alta de empleado: HTTP " + respuesta.status() + "; cuerpo: " + cuerpo;
+        });
+        return correo;
+    }
+
+    private String loginEmpleado(String correo, String clave) throws Exception {
+        String json = """
+                {"correo":"%s","password":"%s"}
+                """.formatted(correo, clave);
+        WireResponse respuesta = response("POST", "/api/auth/login", null, json);
+        assertEquals(200, respuesta.status());
+        var token = java.util.regex.Pattern.compile("\"token\"\\s*:\\s*\"([^\"]+)\"")
+                .matcher(respuesta.wire());
+        assertTrue(token.find(), "La respuesta de login debe contener un JWT");
+        return token.group(1);
+    }
+
+    private String recursoEmpleado(String token) {
+        return EMPLEADOS + "/" + idUsuario(token);
+    }
+
+    private String versionSesion(int usuarioId) {
+        return db.queryForObject("SELECT version_sesion FROM usuarios WHERE id_usuario=?",
+                String.class, usuarioId);
+    }
+
+    private int idUsuario(String token) {
+        return context.getBean(JwtService.class).getClaims(token).get("uid", Number.class).intValue();
     }
 
     @Test void userServiceRequiresTenantAndFiltersList() {

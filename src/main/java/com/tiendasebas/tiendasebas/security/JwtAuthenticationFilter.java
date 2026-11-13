@@ -295,6 +295,19 @@ public class JwtAuthenticationFilter
         }
 
         // ====================================
+        // REVOCACION POR CAMBIO DE CREDENCIALES
+        // ====================================
+
+        String versionToken = claims.get("cv", String.class);
+        if (!jwt.credencialesVigentes(versionToken, usuario.getMaterialSesion())) {
+            response.sendError(
+                    HttpServletResponse.SC_UNAUTHORIZED,
+                    "Token revocado: se requiere iniciar sesion nuevamente"
+            );
+            return;
+        }
+
+        // ====================================
         // AUTENTICACION AUTORIZADA
         // ====================================
 
@@ -518,6 +531,19 @@ public class JwtAuthenticationFilter
                     "Usuario no autorizado"
             );
 
+            return;
+        }
+
+        // ====================================
+        // REVOCACION POR CAMBIO DE CREDENCIALES
+        // ====================================
+
+        String versionToken = claims.get("cv", String.class);
+        if (!jwt.credencialesVigentes(versionToken, usuario.getMaterialSesion())) {
+            response.sendError(
+                    HttpServletResponse.SC_UNAUTHORIZED,
+                    "Token revocado: se requiere iniciar sesion nuevamente"
+            );
             return;
         }
 

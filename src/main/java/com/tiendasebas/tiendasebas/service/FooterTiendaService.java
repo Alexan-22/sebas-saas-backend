@@ -77,7 +77,7 @@ public class FooterTiendaService {
         return v;
     }
 
-    private FooterConfig validar(FooterConfig v) {
+    FooterConfig validar(FooterConfig v) {
         if (v == null) throw invalido("Configuración requerida");
         String correo = campo(v.correo(), 150);
         if (!correo.isEmpty() && !correo.matches("(?i)^[^\\s@]+@[^\\s@]+\\.[^\\s@]+$"))

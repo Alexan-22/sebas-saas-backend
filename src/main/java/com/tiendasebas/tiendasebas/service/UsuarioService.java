@@ -39,6 +39,10 @@ public class UsuarioService {
         }
 
         Usuario usuario = buscarEntidad(idUsuario);
+        if (!estado && Boolean.TRUE.equals(usuario.getEstado())
+                && usuario.getRol() != null && "EMPLEADO".equals(usuario.getRol().getNombreRol())) {
+            usuario.revocarSesiones();
+        }
         usuario.setEstado(estado);
 
         Usuario actualizado = usuarioRepository.save(usuario);

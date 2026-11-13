@@ -2,6 +2,9 @@ package com.tiendasebas.tiendasebas.controller;
 
 import org.springframework.dao.DataIntegrityViolationException;
 import org.springframework.http.HttpStatus;
+import com.tiendasebas.tiendasebas.service.PlanComercialService;
+import com.tiendasebas.tiendasebas.service.SaasActividadService;
+import org.springframework.security.access.prepost.PreAuthorize;
 import org.springframework.jdbc.core.JdbcTemplate;
 import org.springframework.transaction.annotation.Transactional;
 import org.springframework.web.bind.annotation.*;
@@ -22,6 +25,7 @@ import java.util.Locale;
  * No gestiona cobros ni altera las suscripciones existentes.
  */
 @RestController
+@PreAuthorize("hasRole('SUPER_ADMIN')")
 @RequestMapping("/api/superadmin/planes")
 public class SuperAdminPlanController {
 
@@ -40,9 +44,14 @@ public class SuperAdminPlanController {
     private final JdbcTemplate jdbc;
     private final JsonMapper jsonMapper;
 
-    public SuperAdminPlanController(JdbcTemplate jdbc, JsonMapper jsonMapper) {
+    private final PlanComercialService comercial;
+    private final SaasActividadService actividad;
+
+    public SuperAdminPlanController(JdbcTemplate jdbc, JsonMapper jsonMapper, PlanComercialService comercial, SaasActividadService actividad) {
         this.jdbc = jdbc;
         this.jsonMapper = jsonMapper;
+        this.comercial = comercial;
+        this.actividad = actividad;
     }
 
     public record CrearPlanRequest(
@@ -142,6 +151,7 @@ public class SuperAdminPlanController {
                 solicitud.limiteSucursales(), solicitud.beneficios()
         );
 
+        comercial.bloquearCatalogo(true);
         try {
             Long id = jdbc.queryForObject("""
                     INSERT INTO public.planes_saas (
@@ -156,6 +166,7 @@ public class SuperAdminPlanController {
                     d.duracionMeses(), d.limiteProductos(), d.limiteUsuarios(),
                     d.limiteSucursales(), d.beneficiosJson()
             );
+            actividad.registrar("CREAR", "PLAN", id, "Se creó el plan " + id);
             return obtener(id);
         } catch (DataIntegrityViolationException ex) {
             throw new ResponseStatusException(HttpStatus.CONFLICT,
@@ -183,6 +194,7 @@ public class SuperAdminPlanController {
                 solicitud.limiteSucursales(), solicitud.beneficios()
         );
 
+        comercial.bloquearCatalogo(true);
         int actualizados;
         try {
             actualizados = jdbc.update("""
@@ -206,6 +218,7 @@ public class SuperAdminPlanController {
             throw new ResponseStatusException(HttpStatus.NOT_FOUND,
                     "No existe el plan solicitado");
         }
+        actividad.registrar("ACTUALIZAR", "PLAN", id, "Se actualizó el catálogo del plan " + id);
         return obtener(id);
     }
 
@@ -225,6 +238,10 @@ public class SuperAdminPlanController {
 
     private PlanResponse cambiarEstado(Long id, boolean activo) {
         validarId(id);
+        comercial.bloquearCatalogo(true);
+        PlanResponse anterior = obtener(id);
+        if (anterior.activo() == activo) return anterior;
+        if (!activo) comercial.comprobarDesactivacion(id);
         int filas = jdbc.update("""
                 UPDATE public.planes_saas
                    SET activo = ?, actualizado_en = CURRENT_TIMESTAMP
@@ -234,6 +251,7 @@ public class SuperAdminPlanController {
             throw new ResponseStatusException(HttpStatus.NOT_FOUND,
                     "No existe el plan solicitado");
         }
+        actividad.registrar(activo ? "ACTIVAR" : "DESACTIVAR", "PLAN", id, "Se cambió la disponibilidad del plan " + id);
         return obtener(id);
     }
 

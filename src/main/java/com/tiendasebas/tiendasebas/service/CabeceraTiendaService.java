@@ -17,7 +17,13 @@ import java.util.Set;
 
 @Service
 public class CabeceraTiendaService {
-    public record MenuItem(String clave, String texto, boolean visible) {}
+    public record Submenu(String texto, String busqueda) {}
+
+    public record MenuItem(String clave, String texto, boolean visible, List<Submenu> submenus) {
+        public MenuItem(String clave, String texto, boolean visible) {
+            this(clave, texto, visible, List.of());
+        }
+    }
     public record CabeceraConfig(boolean promoActiva, String promoModo, String promoVelocidad,
                                  List<String> promoMensajes, List<MenuItem> menuItems) {}
     private static final Set<String> CLAVES = Set.of("TODO", "MUJER", "HOMBRE", "NOVEDADES", "OFERTAS");
@@ -79,10 +85,11 @@ public class CabeceraTiendaService {
         return valido;
     }
 
-    private CabeceraConfig validar(CabeceraConfig c) {
-        if (c == null || !Set.of("ROTACION", "DESPLAZAMIENTO").contains(c.promoModo()))
+    CabeceraConfig validar(CabeceraConfig c) {
+        if (c == null || c.promoModo() == null || !Set.of("ROTACION", "DESPLAZAMIENTO").contains(c.promoModo()))
             throw invalido("Modo promocional no valido");
-        if (!Set.of("ESTATICA","LENTA","RAPIDA","MUY_RAPIDA").contains(c.promoVelocidad()))
+        String velocidad = "NORMAL".equals(c.promoVelocidad()) ? "RAPIDA" : c.promoVelocidad();
+        if (velocidad == null || !Set.of("ESTATICA", "LENTA", "RAPIDA", "MUY_RAPIDA").contains(velocidad))
             throw invalido("Velocidad promocional no valida");
         if (c.promoMensajes() == null || c.promoMensajes().isEmpty() || c.promoMensajes().size() > 5)
             throw invalido("Indica entre 1 y 5 mensajes promocionales");
@@ -97,12 +104,28 @@ public class CabeceraTiendaService {
         Set<String> usadas = new HashSet<>();
         List<MenuItem> menu = new ArrayList<>();
         for (MenuItem item : c.menuItems()) {
-            if (item == null || !CLAVES.contains(item.clave()) || !usadas.add(item.clave()) ||
+            if (item == null || item.clave() == null || !CLAVES.contains(item.clave()) || !usadas.add(item.clave()) ||
                 item.texto() == null || item.texto().isBlank() || item.texto().strip().length() > 24)
                 throw invalido("Secciones de menu invalidas o repetidas");
-            menu.add(new MenuItem(item.clave(), item.texto().strip(), item.visible()));
+            List<Submenu> submenus = item.submenus() == null ? List.of() : item.submenus();
+            if (submenus.size() > 8) {
+                throw invalido("Cada menú admite hasta ocho submenús");
+            }
+            List<Submenu> validados = new ArrayList<>();
+            for (Submenu submenu : submenus) {
+                if (submenu == null || !textoValido(submenu.texto(), 24)
+                        || !textoValido(submenu.busqueda(), 80)) {
+                    throw invalido("Indica un nombre y una búsqueda válida para cada submenú");
+                }
+                validados.add(new Submenu(submenu.texto().strip(), submenu.busqueda().strip()));
+            }
+            menu.add(new MenuItem(item.clave(), item.texto().strip(), item.visible(), List.copyOf(validados)));
         }
-        return new CabeceraConfig(c.promoActiva(), c.promoModo(), c.promoVelocidad(), List.copyOf(mensajes), List.copyOf(menu));
+        return new CabeceraConfig(c.promoActiva(), c.promoModo(), velocidad, List.copyOf(mensajes), List.copyOf(menu));
+    }
+
+    private boolean textoValido(String texto, int maximo) {
+        return texto != null && !texto.isBlank() && texto.strip().length() <= maximo;
     }
 
     private ResponseStatusException invalido(String msg) {

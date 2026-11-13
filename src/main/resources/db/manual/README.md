@@ -16,6 +16,20 @@ aplicados manualmente en Supabase.
 No volver a ejecutar estos archivos sobre una base
 existente sin inspeccionar primero su estructura.
 
+## Revocación de sesiones de empleados
+
+V18__version_sesion_usuarios.sql agrega una columna nullable a usuarios.
+Aplicar primero en una base aislada y revisar antes de instalar el backend
+que depende de esta columna. Las cuentas existentes conservan la versión
+implícita hasta su primera desactivación.
+
+## Editor de tienda
+
+V19__editor_tienda.sql crea el almacenamiento de borradores e historial.
+Aplicar en PostgreSQL aislado antes de usar el nuevo editor. El usuario JDBC
+debe ser el propietario de las tablas o tener acceso autorizado por RLS.
+Las rutas públicas siguen leyendo las configuraciones de cabecera y footer existentes.
+
 ## Importante
 
 El backend actual no tiene Flyway configurado.

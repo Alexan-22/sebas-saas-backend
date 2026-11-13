@@ -42,6 +42,10 @@ public class RbacEmpleadoController {
             @NotNull Boolean activo
     ) {}
 
+    public record RestablecerPasswordRequest(
+            @NotBlank @Size(min = 10, max = 72) String password
+    ) {}
+
     @PostMapping
     @ResponseStatus(HttpStatus.CREATED)
     public EmpleadoResponse crear(
@@ -71,6 +75,15 @@ public class RbacEmpleadoController {
                 request.apellido(),
                 request.correo()
         );
+    }
+
+    @PatchMapping("/{usuarioId}/contrasena")
+    @ResponseStatus(HttpStatus.NO_CONTENT)
+    public void restablecerPassword(
+            @PathVariable Integer usuarioId,
+            @Valid @RequestBody RestablecerPasswordRequest request
+    ) {
+        servicio.restablecerPassword(usuarioId, request.password());
     }
 
     @PatchMapping("/{usuarioId}/estado")

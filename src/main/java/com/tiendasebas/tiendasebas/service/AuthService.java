@@ -127,7 +127,8 @@ public class AuthService {
                 usuario.getIdUsuario(),
                 usuario.getCorreo(),
                 rol,
-                usuario.getTiendaId()
+                usuario.getTiendaId(),
+                usuario.getMaterialSesion()
         );
 
         return new LoginResponse(
@@ -190,7 +191,8 @@ public class AuthService {
                 usuario.getIdUsuario(),
                 usuario.getCorreo(),
                 "SUPER_ADMIN",
-                null
+                null,
+                usuario.getMaterialSesion()
         );
 
         return new LoginResponse(

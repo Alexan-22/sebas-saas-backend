@@ -78,7 +78,7 @@ public class RbacEmpleadoService {
     }
 
     private void validarPassword(String password) {
-        if (password == null ||
+        if (password == null || password.isBlank() ||
                 password.length() < 10 ||
                 password.length() > 72 ||
                 password.getBytes(StandardCharsets.UTF_8).length > 72) {
@@ -222,6 +222,14 @@ public class RbacEmpleadoService {
     }
 
     @Transactional
+    public void restablecerPassword(Integer usuarioId, String password) {
+        validarPassword(password);
+        Usuario empleado = obtenerEmpleado(usuarioId);
+        empleado.setPasswordHash(encoder.encode(password));
+        usuarios.saveAndFlush(empleado);
+    }
+
+    @Transactional
     public EmpleadoResponse cambiarEstado(
             Integer usuarioId,
             Boolean activo
@@ -235,6 +243,9 @@ public class RbacEmpleadoService {
 
         Usuario empleado = obtenerEmpleado(usuarioId);
 
+        if (!activo && Boolean.TRUE.equals(empleado.getEstado())) {
+            empleado.revocarSesiones();
+        }
         empleado.setEstado(activo);
 
         return convertir(usuarios.saveAndFlush(empleado));
