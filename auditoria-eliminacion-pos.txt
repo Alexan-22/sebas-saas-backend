@@ -1,0 +1,249 @@
+﻿
+
+Archivo : D:\Proyectos\SebasSaaS-GitHub\sebas-saas-backend\src\main\java\com\tiendasebas\tiendasebas\entity\Venta.java
+Linea   : 28
+Codigo  : * Ahora puede ser NULL porque una venta PRESENCIAL
+
+Archivo : D:\Proyectos\SebasSaaS-GitHub\sebas-saas-backend\src\main\java\com\tiendasebas\tiendasebas\entity\Venta.java
+Linea   : 37
+Codigo  : * CLIENTE PRESENCIAL
+
+Archivo : D:\Proyectos\SebasSaaS-GitHub\sebas-saas-backend\src\main\java\com\tiendasebas\tiendasebas\entity\Venta.java
+Linea   : 40
+Codigo  : * Se utiliza cuando tipoVenta = PRESENCIAL.
+
+Archivo : D:\Proyectos\SebasSaaS-GitHub\sebas-saas-backend\src\main\java\com\tiendasebas\tiendasebas\entity\Venta.java
+Linea   : 42
+Codigo  : * Este cliente pertenece al flujo físico/POS y no
+
+Archivo : D:\Proyectos\SebasSaaS-GitHub\sebas-saas-backend\src\main\java\com\tiendasebas\tiendasebas\entity\Venta.java
+Linea   : 57
+Codigo  : * PRESENCIAL:
+
+Archivo : D:\Proyectos\SebasSaaS-GitHub\sebas-saas-backend\src\main\java\com\tiendasebas\tiendasebas\entity\Venta.java
+Linea   : 58
+Codigo  : * - Cliente presencial
+
+Archivo : D:\Proyectos\SebasSaaS-GitHub\sebas-saas-backend\src\main\java\com\tiendasebas\tiendasebas\entity\Venta.java
+Linea   : 66
+Codigo  : @Column(name = "tipo_venta", length = 20)
+
+Archivo : D:\Proyectos\SebasSaaS-GitHub\sebas-saas-backend\src\main\java\com\tiendasebas\tiendasebas\entity\Venta.java
+Linea   : 110
+Codigo  : * PRESENCIAL:
+
+Archivo : D:\Proyectos\SebasSaaS-GitHub\sebas-saas-backend\src\main\java\com\tiendasebas\tiendasebas\entity\Venta.java
+Linea   : 127
+Codigo  : * PRESENCIAL:
+
+Archivo : D:\Proyectos\SebasSaaS-GitHub\sebas-saas-backend\src\main\java\com\tiendasebas\tiendasebas\entity\Venta.java
+Linea   : 141
+Codigo  : * PRESENCIAL:
+
+Archivo : D:\Proyectos\SebasSaaS-GitHub\sebas-saas-backend\src\main\java\com\tiendasebas\tiendasebas\pagos\PersistentSandboxPaymentProvider.java
+Linea   : 37
+Codigo  : var orders = jdbc.queryForList("SELECT total, tipo_venta, medio_pago, estado FROM ventas WHERE tienda_id=? AND id_venta=? FOR UPDATE",
+
+Archivo : D:\Proyectos\SebasSaaS-GitHub\sebas-saas-backend\src\main\java\com\tiendasebas\tiendasebas\pagos\PersistentSandboxPaymentProvider.java
+Linea   : 51
+Codigo  : if (!"ONLINE".equals(order.get("tipo_venta")) || !"SIMULADO".equals(order.get("medio_pago"))
+
+Archivo : D:\Proyectos\SebasSaaS-GitHub\sebas-saas-backend\src\main\java\com\tiendasebas\tiendasebas\pagos\PersistentSandboxPaymentProvider.java
+Linea   : 100
+Codigo  : var orders = jdbc.queryForList("SELECT total,estado,medio_pago,tipo_venta FROM ventas WHERE tienda_id=? AND id_venta=? FOR UPDATE",
+
+Archivo : D:\Proyectos\SebasSaaS-GitHub\sebas-saas-backend\src\main\java\com\tiendasebas\tiendasebas\pagos\PersistentSandboxPaymentProvider.java
+Linea   : 109
+Codigo  : if (!"ONLINE".equals(order.get("tipo_venta")) || !"SIMULADO".equals(order.get("medio_pago"))
+
+Archivo : D:\Proyectos\SebasSaaS-GitHub\sebas-saas-backend\src\main\java\com\tiendasebas\tiendasebas\service\ContraEntregaService.java
+Linea   : 73
+Codigo  : WHERE v.tienda_id=? AND v.id_venta=? AND v.tipo_venta='ONLINE'
+
+Archivo : D:\Proyectos\SebasSaaS-GitHub\sebas-saas-backend\src\main\java\com\tiendasebas\tiendasebas\service\EnvioService.java
+Linea   : 61
+Codigo  : /** Opciones verificadas directamente contra el tipo_venta persistido, por tienda. */
+
+Archivo : D:\Proyectos\SebasSaaS-GitHub\sebas-saas-backend\src\main\java\com\tiendasebas\tiendasebas\service\EnvioService.java
+Linea   : 65
+Codigo  : "WHERE tienda_id=? AND tipo_venta='ONLINE' " +
+
+Archivo : D:\Proyectos\SebasSaaS-GitHub\sebas-saas-backend\src\main\java\com\tiendasebas\tiendasebas\service\EnvioService.java
+Linea   : 110
+Codigo  : WHERE v.tienda_id=? AND v.id_venta=? AND v.tipo_venta='ONLINE'
+
+Archivo : D:\Proyectos\SebasSaaS-GitHub\sebas-saas-backend\src\main\resources\db\migration\V1__permitir_ventas_presenciales.sql
+Linea   : 3
+Codigo  : -- Migración: soporte para ventas presenciales
+
+Archivo : D:\Proyectos\SebasSaaS-GitHub\sebas-saas-backend\src\main\resources\db\migration\V1__permitir_ventas_presenciales.sql
+Linea   : 7
+Codigo  : -- Una venta PRESENCIAL utiliza id_cliente_presencial.
+
+Archivo : D:\Proyectos\SebasSaaS-GitHub\sebas-saas-backend\src\main\resources\db\migration\V3__cliente_documento_por_tienda.sql
+Linea   : 3
+Codigo  : LOCK TABLE public.clientes_presenciales IN ACCESS EXCLUSIVE MODE;
+
+Archivo : D:\Proyectos\SebasSaaS-GitHub\sebas-saas-backend\src\main\resources\db\migration\V3__cliente_documento_por_tienda.sql
+Linea   : 7
+Codigo  : IF EXISTS (SELECT 1 FROM public.clientes_presenciales WHERE tienda_id IS NULL OR tienda_id <= 0) THEN
+
+Archivo : D:\Proyectos\SebasSaaS-GitHub\sebas-saas-backend\src\main\resources\db\migration\V3__cliente_documento_por_tienda.sql
+Linea   : 10
+Codigo  : IF EXISTS (SELECT 1 FROM public.clientes_presenciales
+
+Archivo : D:\Proyectos\SebasSaaS-GitHub\sebas-saas-backend\src\main\resources\db\migration\V3__cliente_documento_por_tienda.sql
+Linea   : 15
+Codigo  : WHERE conrelid='public.clientes_presenciales'::regclass
+
+Archivo : D:\Proyectos\SebasSaaS-GitHub\sebas-saas-backend\src\main\resources\db\migration\V3__cliente_documento_por_tienda.sql
+Linea   : 16
+Codigo  : AND conname='uk_cliente_presencial_documento' AND contype='u';
+
+Archivo : D:\Proyectos\SebasSaaS-GitHub\sebas-saas-backend\src\main\resources\db\migration\V3__cliente_documento_por_tienda.sql
+Linea   : 21
+Codigo  : ALTER TABLE public.clientes_presenciales
+
+Archivo : D:\Proyectos\SebasSaaS-GitHub\sebas-saas-backend\src\main\resources\db\migration\V3__cliente_documento_por_tienda.sql
+Linea   : 22
+Codigo  : ADD CONSTRAINT uk_cliente_presencial_tienda_documento
+
+Archivo : D:\Proyectos\SebasSaaS-GitHub\sebas-saas-backend\src\main\resources\db\migration\V3__cliente_documento_por_tienda.sql
+Linea   : 24
+Codigo  : ALTER TABLE public.clientes_presenciales
+
+Archivo : D:\Proyectos\SebasSaaS-GitHub\sebas-saas-backend\src\main\resources\db\migration\V3__cliente_documento_por_tienda.sql
+Linea   : 25
+Codigo  : DROP CONSTRAINT uk_cliente_presencial_documento;
+
+Archivo : D:\Proyectos\SebasSaaS-GitHub\sebas-saas-backend\src\test\java\com\tiendasebas\tiendasebas\integration\CancelacionCodHttpJpaTest.java
+Linea   : 436
+Codigo  : @Test void posYClientesPresencialesNoEstanDisponibles() throws Exception {
+
+Archivo : D:\Proyectos\SebasSaaS-GitHub\sebas-saas-backend\src\test\java\com\tiendasebas\tiendasebas\integration\CancelacionCodHttpJpaTest.java
+Linea   : 441
+Codigo  : "/api/ventas/admin/pos", admin, "{}"));
+
+Archivo : D:\Proyectos\SebasSaaS-GitHub\sebas-saas-backend\src\test\java\com\tiendasebas\tiendasebas\integration\CancelacionCodHttpJpaTest.java
+Linea   : 444
+Codigo  : "/api/clientes-presenciales/admin", admin));
+
+Archivo : D:\Proyectos\SebasSaaS-GitHub\sebas-saas-backend\src\test\java\com\tiendasebas\tiendasebas\integration\CancelacionCodHttpJpaTest.java
+Linea   : 447
+Codigo  : "/api/clientes-presenciales/admin", admin, "{}"));
+
+Archivo : D:\Proyectos\SebasSaaS-GitHub\sebas-saas-backend\src\test\java\com\tiendasebas\tiendasebas\integration\CancelacionCodHttpJpaTest.java
+Linea   : 535
+Codigo  : @Test void posOrder() throws Exception {
+
+Archivo : D:\Proyectos\SebasSaaS-GitHub\sebas-saas-backend\src\test\java\com\tiendasebas\tiendasebas\integration\CancelacionCodHttpJpaTest.java
+Linea   : 536
+Codigo  : db.update("UPDATE ventas SET tipo_venta='PRESENCIAL' WHERE id_venta=?", saleId);
+
+Archivo : D:\Proyectos\SebasSaaS-GitHub\sebas-saas-backend\src\test\java\com\tiendasebas\tiendasebas\integration\CancelacionCodPostgresIT.java
+Linea   : 105
+Codigo  : SELECT id_venta, tienda_id, tipo_venta, medio_pago, estado_pedido, estado
+
+Archivo : D:\Proyectos\SebasSaaS-GitHub\sebas-saas-backend\src\test\java\com\tiendasebas\tiendasebas\integration\CancelacionCodPostgresIT.java
+Linea   : 112
+Codigo  : v.setTipoVenta(TipoVenta.valueOf(rs.getString("tipo_venta")));
+
+Archivo : D:\Proyectos\SebasSaaS-GitHub\sebas-saas-backend\src\test\java\com\tiendasebas\tiendasebas\integration\CancelacionCodPostgresIT.java
+Linea   : 211
+Codigo  : tipo_venta VARCHAR(20) NOT NULL,
+
+Archivo : D:\Proyectos\SebasSaaS-GitHub\sebas-saas-backend\src\test\java\com\tiendasebas\tiendasebas\integration\CancelacionCodPostgresIT.java
+Linea   : 273
+Codigo  : AND v.tipo_venta = 'ONLINE'
+
+Archivo : D:\Proyectos\SebasSaaS-GitHub\sebas-saas-backend\src\test\java\com\tiendasebas\tiendasebas\integration\CancelacionCodPostgresIT.java
+Linea   : 303
+Codigo  : db.update("INSERT INTO public.ventas(id_venta,tienda_id,tipo_venta,medio_pago,estado_pedido,estado) VALUES (101,1,'ONLINE','CONTRA_ENTREGA','RECIBIDO','REGISTRADA')");
+
+Archivo : D:\Proyectos\SebasSaaS-GitHub\sebas-saas-backend\src\test\java\com\tiendasebas\tiendasebas\integration\ClienteDocumentoMigrationTest.java
+Linea   : 30
+Codigo  : db.execute("CREATE TABLE clientes_presenciales (id integer PRIMARY KEY, tienda_id bigint, tipo_documento text, numero_documento text, CONSTRAINT uk_cliente_presencial_documento UNIQUE(tipo_documento,numero_documento))");
+
+Archivo : D:\Proyectos\SebasSaaS-GitHub\sebas-saas-backend\src\test\java\com\tiendasebas\tiendasebas\integration\ClienteDocumentoMigrationTest.java
+Linea   : 31
+Codigo  : db.update("INSERT INTO clientes_presenciales VALUES (1,NULL,'DNI','12345678')");
+
+Archivo : D:\Proyectos\SebasSaaS-GitHub\sebas-saas-backend\src\test\java\com\tiendasebas\tiendasebas\integration\ClienteDocumentoMigrationTest.java
+Linea   : 39
+Codigo  : assertEquals(1, db.queryForObject("SELECT count(*) FROM clientes_presenciales WHERE tienda_id IS NULL", Integer.class));
+
+Archivo : D:\Proyectos\SebasSaaS-GitHub\sebas-saas-backend\src\test\java\com\tiendasebas\tiendasebas\integration\ClienteDocumentoMigrationTest.java
+Linea   : 40
+Codigo  : assertEquals(1, db.queryForObject("SELECT count(*) FROM pg_constraint WHERE conrelid='clientes_presenciales'::regclass AND conname='uk_cliente_presencial_documento'", Integer.class));
+
+Archivo : D:\Proyectos\SebasSaaS-GitHub\sebas-saas-backend\src\test\java\com\tiendasebas\tiendasebas\integration\ClienteDocumentoMigrationTest.java
+Linea   : 55
+Codigo  : rejectIncompatible(", CONSTRAINT uk_cliente_presencial_documento UNIQUE(numero_documento)",
+
+Archivo : D:\Proyectos\SebasSaaS-GitHub\sebas-saas-backend\src\test\java\com\tiendasebas\tiendasebas\integration\ClienteDocumentoMigrationTest.java
+Linea   : 66
+Codigo  : db.execute("CREATE TABLE clientes_presenciales (id integer PRIMARY KEY, tienda_id bigint, tipo_documento text, numero_documento text" + constraint + ")");
+
+Archivo : D:\Proyectos\SebasSaaS-GitHub\sebas-saas-backend\src\test\java\com\tiendasebas\tiendasebas\integration\ClienteDocumentoMigrationTest.java
+Linea   : 67
+Codigo  : db.update("INSERT INTO clientes_presenciales VALUES " + rows);
+
+Archivo : D:\Proyectos\SebasSaaS-GitHub\sebas-saas-backend\src\test\java\com\tiendasebas\tiendasebas\integration\ClienteDocumentoMigrationTest.java
+Linea   : 68
+Codigo  : var before = db.queryForList("SELECT * FROM clientes_presenciales ORDER BY id");
+
+Archivo : D:\Proyectos\SebasSaaS-GitHub\sebas-saas-backend\src\test\java\com\tiendasebas\tiendasebas\integration\ClienteDocumentoMigrationTest.java
+Linea   : 69
+Codigo  : var constraints = db.queryForList("SELECT conname, pg_get_constraintdef(oid) AS definition FROM pg_constraint WHERE conrelid='clientes_presenciales'::regclass ORDER BY conname");
+
+Archivo : D:\Proyectos\SebasSaaS-GitHub\sebas-saas-backend\src\test\java\com\tiendasebas\tiendasebas\integration\ClienteDocumentoMigrationTest.java
+Linea   : 78
+Codigo  : assertEquals(before, db.queryForList("SELECT * FROM clientes_presenciales ORDER BY id"));
+
+Archivo : D:\Proyectos\SebasSaaS-GitHub\sebas-saas-backend\src\test\java\com\tiendasebas\tiendasebas\integration\ClienteDocumentoMigrationTest.java
+Linea   : 79
+Codigo  : assertEquals(constraints, db.queryForList("SELECT conname, pg_get_constraintdef(oid) AS definition FROM pg_constraint WHERE conrelid='clientes_presenciales'::regclass ORDER BY conname"));
+
+Archivo : D:\Proyectos\SebasSaaS-GitHub\sebas-saas-backend\src\test\java\com\tiendasebas\tiendasebas\integration\ClienteDocumentoMigrationTest.java
+Linea   : 90
+Codigo  : db.execute("CREATE TABLE clientes_presenciales (id integer PRIMARY KEY, tienda_id bigint, tipo_documento text NOT NULL, numero_documento text NOT NULL, CONSTRAINT uk_cliente_presencial_documento UNIQUE(tipo_documento,numero_documento))");
+
+Archivo : D:\Proyectos\SebasSaaS-GitHub\sebas-saas-backend\src\test\java\com\tiendasebas\tiendasebas\integration\ClienteDocumentoMigrationTest.java
+Linea   : 91
+Codigo  : db.update("INSERT INTO clientes_presenciales VALUES (1,1,'DNI','12345678')");
+
+Archivo : D:\Proyectos\SebasSaaS-GitHub\sebas-saas-backend\src\test\java\com\tiendasebas\tiendasebas\integration\ClienteDocumentoMigrationTest.java
+Linea   : 102
+Codigo  : assertEquals(1, db.queryForObject("SELECT count(*) FROM clientes_presenciales WHERE id=1 AND tienda_id=1", Integer.class));
+
+Archivo : D:\Proyectos\SebasSaaS-GitHub\sebas-saas-backend\src\test\java\com\tiendasebas\tiendasebas\integration\ClienteDocumentoMigrationTest.java
+Linea   : 103
+Codigo  : assertEquals(1, db.update("INSERT INTO clientes_presenciales VALUES (2,2,'DNI','12345678')"));
+
+Archivo : D:\Proyectos\SebasSaaS-GitHub\sebas-saas-backend\src\test\java\com\tiendasebas\tiendasebas\integration\ClienteDocumentoMigrationTest.java
+Linea   : 105
+Codigo  : () -> db.update("INSERT INTO clientes_presenciales VALUES (3,1,'DNI','12345678')"));
+
+Archivo : D:\Proyectos\SebasSaaS-GitHub\sebas-saas-backend\src\test\java\com\tiendasebas\tiendasebas\integration\ClienteDocumentoMigrationTest.java
+Linea   : 106
+Codigo  : assertEquals(2, db.queryForObject("SELECT count(*) FROM clientes_presenciales", Integer.class));
+
+Archivo : D:\Proyectos\SebasSaaS-GitHub\sebas-saas-tienda\src\app\features\admin\envios\gestion-envios\gestion-envios.html
+Linea   : 27
+Codigo  : <p class="aviso">Todavia no hay pedidos con tipo ONLINE confirmado en esta tienda. Este formulario solo gestiona envios: para probarlo, crea una compra nueva desde la tienda publica con una cuenta de prueba. No conviertas ventas POS ni cambies ventas antiguas por SQL.</p>
+
+Archivo : D:\Proyectos\SebasSaaS-GitHub\sebas-saas-tienda\src\app\features\admin\reportes\reportes.css
+Linea   : 290
+Codigo  : .channel-badge.pos { background: #d1fae5; color: #059669; }
+
+Archivo : D:\Proyectos\SebasSaaS-GitHub\sebas-saas-tienda\src\app\features\admin\ventas\ventas.css
+Linea   : 342
+Codigo  : .sale-type-badge.presencial {
+
+Archivo : D:\Proyectos\SebasSaaS-GitHub\sebas-saas-tienda\src\layout\operaciones-layout.component.html
+Linea   : 16
+Codigo  : <a routerLink="caja" routerLinkActive="activo">Caja POS</a>
+
+
+
+

@@ -532,10 +532,6 @@ class CancelacionCodHttpJpaTest {
         db.update("UPDATE saas_envios SET estado='DESPACHADO' WHERE id_venta=?", saleId);
         assertEquals(409, cancel(admin)); assertEquals(18, stock()); assertEquals(0, audits());
     }
-    @Test void posOrder() throws Exception {
-        db.update("UPDATE ventas SET tipo_venta='PRESENCIAL' WHERE id_venta=?", saleId);
-        assertEquals(409, cancel(admin)); assertEquals(18, stock()); assertEquals(0, audits());
-    }
     @Test void ordinaryPayment() throws Exception {
         db.update("UPDATE ventas SET medio_pago='TARJETA' WHERE id_venta=?", saleId);
         assertEquals(409, cancel(admin)); assertEquals(18, stock()); assertEquals(0, audits());

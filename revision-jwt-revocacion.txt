@@ -1,0 +1,138 @@
+﻿===== PerfilController.java =====
+
+===== SuperAdminPerfilController.java =====
+
+===== JwtAuthenticationFilter.java =====
+LINEA 183:                     "Token invalido o expirado"
+            );
+
+            return;
+LINEA 215:                     "Claims de token invalidos"
+            );
+
+            return;
+LINEA 251:         // no se ocultara como token invalido.
+
+        Optional<Usuario> encontrado =
+                usuarios.findByCorreoAndTiendaIdIsNull(
+LINEA 254:                 usuarios.findByCorreoAndTiendaIdIsNull(
+                        correo
+                );
+
+LINEA 280:                                 usuario.getEstado()
+                        ) ||
+                        usuario.getTiendaId() != null ||
+                        usuario.getRol() == null ||
+LINEA 323:         // 3. Estado ACTIVA.
+        //
+        // Si esta PENDIENTE o SUSPENDIDA,
+        // devuelve Optional.empty().
+LINEA 371:                     "Cabecera Authorization invalida"
+            );
+
+            return;
+LINEA 405:                     "Token invalido o expirado"
+            );
+
+            return;
+LINEA 443:                     "Claims de token invalidos"
+            );
+
+            return;
+LINEA 481:                 usuarios.findByIdUsuarioAndTiendaId(
+                        usuarioId,
+                        tiendaId
+                );
+LINEA 504:                         usuario.getEstado()
+                ) ||
+                        usuario.getCorreo() == null ||
+                        !usuario.getCorreo().equalsIgnoreCase(
+
+===== JwtService.java =====
+LINEA 21:     @Value("${app.jwt.expiration}")
+    private long expiration;
+
+    private SecretKey key() {
+LINEA 22:     private long expiration;
+
+    private SecretKey key() {
+        return Keys.hmacShaKeyFor(
+LINEA 30:     public String generateToken(
+            Integer usuarioId,
+            String correo,
+            String rol,
+LINEA 49:                 .expiration(
+                        new Date(
+                                System.currentTimeMillis() + expiration
+                        )
+LINEA 51:                                 System.currentTimeMillis() + expiration
+                        )
+                )
+                .signWith(key())
+
+===== AuthService.java =====
+LINEA 75:         usuario.setPasswordHash(
+                passwordEncoder.encode(request.getPassword())
+        );
+
+LINEA 81:         usuario.setEstado(true);
+
+        usuarioRepository.save(usuario);
+
+LINEA 99:                 .findByCorreoAndTiendaId(
+                        correo,
+                        TenantContext.getCurrentTenant()
+                )
+LINEA 109:         if (!Boolean.TRUE.equals(usuario.getEstado())) {
+            throw new RuntimeException(
+                    "El usuario está deshabilitado"
+            );
+LINEA 117:                 usuario.getPasswordHash()
+        )) {
+            throw new RuntimeException(
+                    "Correo o contraseña incorrectos"
+LINEA 126:         String token = jwtService.generateToken(
+                usuario.getIdUsuario(),
+                usuario.getCorreo(),
+                rol,
+LINEA 158:             throw credencialesInvalidas();
+        }
+
+        // Buscar únicamente usuarios globales.
+LINEA 163:                 .findByCorreoAndTiendaIdIsNull(correo)
+                .orElseThrow(this::credencialesInvalidas);
+
+        // Verificar que la cuenta esté habilitada.
+LINEA 164:                 .orElseThrow(this::credencialesInvalidas);
+
+        // Verificar que la cuenta esté habilitada.
+        if (!Boolean.TRUE.equals(usuario.getEstado())) {
+LINEA 167:         if (!Boolean.TRUE.equals(usuario.getEstado())) {
+            throw credencialesInvalidas();
+        }
+
+LINEA 168:             throw credencialesInvalidas();
+        }
+
+        // Solo SUPER_ADMIN puede usar este acceso.
+LINEA 176:             throw credencialesInvalidas();
+        }
+
+        // Comprobar contraseña mediante BCrypt.
+LINEA 182:                 usuario.getPasswordHash()
+        )) {
+            throw credencialesInvalidas();
+        }
+LINEA 184:             throw credencialesInvalidas();
+        }
+
+        // El usuario global no pertenece a una tienda.
+LINEA 189:         String token = jwtService.generateToken(
+                usuario.getIdUsuario(),
+                usuario.getCorreo(),
+                "SUPER_ADMIN",
+LINEA 204:     private ResponseStatusException credencialesInvalidas() {
+        return new ResponseStatusException(
+                HttpStatus.UNAUTHORIZED,
+                "Credenciales incorrectas"
+

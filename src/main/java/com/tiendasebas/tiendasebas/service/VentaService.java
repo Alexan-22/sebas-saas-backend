@@ -288,7 +288,7 @@ public class VentaService {
         Long tiendaId = TenantContext.getCurrentTenant();
 
         Venta venta = ventaRepository.findByIdVentaAndUsuarioCorreoAndTiendaId(idVenta, correoUsuario, tiendaId)
-                .orElseThrow(() -> new CompraException("La compra no existe o no pertenece al usuario"));
+                .orElseThrow(() -> new org.springframework.web.server.ResponseStatusException(org.springframework.http.HttpStatus.NOT_FOUND, "Compra no encontrada"));
         return construirDetalleCompra(venta);
     }
 

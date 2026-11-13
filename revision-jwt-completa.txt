@@ -1,0 +1,950 @@
+﻿===== JwtService.java =====
+package com.tiendasebas.tiendasebas.security;
+
+import io.jsonwebtoken.Claims;
+import io.jsonwebtoken.JwtBuilder;
+import io.jsonwebtoken.Jwts;
+import io.jsonwebtoken.security.Keys;
+
+import org.springframework.beans.factory.annotation.Value;
+import org.springframework.stereotype.Service;
+
+import javax.crypto.SecretKey;
+import java.nio.charset.StandardCharsets;
+import java.util.Date;
+
+@Service
+public class JwtService {
+
+    @Value("${app.jwt.secret}")
+    private String secret;
+
+    @Value("${app.jwt.expiration}")
+    private long expiration;
+
+    private SecretKey key() {
+        return Keys.hmacShaKeyFor(
+                secret.getBytes(StandardCharsets.UTF_8)
+        );
+    }
+
+    public String generateToken(
+            Integer usuarioId,
+            String correo,
+            String rol,
+            Long tiendaId
+    ) {
+        JwtBuilder builder = Jwts.builder()
+                .subject(correo)
+                .claim("uid", usuarioId)
+                .claim("rol", rol);
+
+        // Los usuarios normales pertenecen a una tienda.
+        // El SUPER_ADMIN global no tiene tienda_id.
+        if (tiendaId != null) {
+            builder.claim("tid", tiendaId);
+        }
+
+        return builder
+                .issuedAt(new Date())
+                .expiration(
+                        new Date(
+                                System.currentTimeMillis() + expiration
+                        )
+                )
+                .signWith(key())
+                .compact();
+    }
+
+    public Claims getClaims(String token) {
+        return Jwts.parser()
+                .verifyWith(key())
+                .build()
+                .parseSignedClaims(token)
+                .getPayload();
+    }
+}
+
+===== JwtAuthenticationFilter.java =====
+
+package com.tiendasebas.tiendasebas.security;
+
+import com.tiendasebas.tiendasebas.config.TenantContext;
+import com.tiendasebas.tiendasebas.config.TenantResolver;
+import com.tiendasebas.tiendasebas.entity.Usuario;
+import com.tiendasebas.tiendasebas.repository.UsuarioRepository;
+
+import io.jsonwebtoken.Claims;
+import io.jsonwebtoken.JwtException;
+
+import jakarta.servlet.FilterChain;
+import jakarta.servlet.ServletException;
+import jakarta.servlet.http.HttpServletRequest;
+import jakarta.servlet.http.HttpServletResponse;
+
+import org.springframework.security.authentication.UsernamePasswordAuthenticationToken;
+import org.springframework.security.core.authority.SimpleGrantedAuthority;
+import org.springframework.security.core.context.SecurityContextHolder;
+import org.springframework.stereotype.Component;
+import org.springframework.web.filter.OncePerRequestFilter;
+
+import java.io.IOException;
+import java.util.List;
+import java.util.Objects;
+import java.util.Optional;
+
+// ============================================
+// SEBAS COLLECTION SAAS V2
+// FILTRO JWT GLOBAL Y MULTITENANT
+// ============================================
+
+@Component
+public class JwtAuthenticationFilter
+        extends OncePerRequestFilter {
+
+    // ========================================
+    // DEPENDENCIAS
+    // ========================================
+
+    private final JwtService jwt;
+
+    private final UsuarioRepository usuarios;
+
+    private final TenantResolver resolver;
+
+    // ========================================
+    // CONSTRUCTOR
+    // ========================================
+
+    public JwtAuthenticationFilter(
+            JwtService jwt,
+            UsuarioRepository usuarios,
+            TenantResolver resolver
+    ) {
+        this.jwt = jwt;
+        this.usuarios = usuarios;
+        this.resolver = resolver;
+    }
+
+    // ========================================
+    // FILTRO PRINCIPAL
+    // ========================================
+
+    @Override
+    protected void doFilterInternal(
+            HttpServletRequest request,
+            HttpServletResponse response,
+            FilterChain chain
+    ) throws ServletException, IOException {
+
+        try {
+
+            String ruta = request.getServletPath();
+
+            // =================================
+            // SOLICITUDES CORS PREFLIGHT
+            // =================================
+
+            if ("OPTIONS".equalsIgnoreCase(
+                    request.getMethod()
+            )) {
+
+                chain.doFilter(request, response);
+                return;
+            }
+
+            // =================================
+            // LOGIN GLOBAL SUPERADMIN
+            // =================================
+
+            // El endpoint realiza su propia
+            // autenticacion con credenciales.
+
+            if ("/api/auth/superadmin/login".equals(ruta)) {
+
+                chain.doFilter(request, response);
+                return;
+            }
+
+            // =================================
+            // ENDPOINTS DEL SUPERADMIN
+            // =================================
+
+            // No dependen de ningun tenant.
+            // Una tienda suspendida no debe
+            // bloquear la administracion global.
+
+            if (
+                    "/api/superadmin".equals(ruta) ||
+                            ruta.startsWith("/api/superadmin/")
+            ) {
+
+                autenticarSuperAdmin(
+                        request,
+                        response,
+                        chain
+                );
+
+                return;
+            }
+
+            // =================================
+            // RESTO DE ENDPOINTS POR TIENDA
+            // =================================
+
+            autenticarTienda(
+                    request,
+                    response,
+                    chain
+            );
+
+        } finally {
+
+            // Impedir que el contexto de una
+            // solicitud permanezca en el hilo.
+
+            SecurityContextHolder.clearContext();
+
+            TenantContext.clear();
+        }
+    }
+
+    // ========================================
+    // AUTENTICACION SUPERADMIN GLOBAL
+    // ========================================
+
+    private void autenticarSuperAdmin(
+            HttpServletRequest request,
+            HttpServletResponse response,
+            FilterChain chain
+    ) throws IOException, ServletException {
+
+        String token = obtenerBearer(request);
+
+        if (token == null) {
+
+            response.sendError(
+                    HttpServletResponse.SC_UNAUTHORIZED,
+                    "Autenticacion requerida"
+            );
+
+            return;
+        }
+
+        // ====================================
+        // VERIFICAR JWT
+        // ====================================
+
+        Claims claims;
+
+        try {
+
+            claims = jwt.getClaims(token);
+
+        } catch (
+                JwtException |
+                IllegalArgumentException ex
+        ) {
+
+            response.sendError(
+                    HttpServletResponse.SC_UNAUTHORIZED,
+                    "Token invalido o expirado"
+            );
+
+            return;
+        }
+
+        // ====================================
+        // LEER IDENTIDAD DEL TOKEN
+        // ====================================
+
+        Number uid;
+        Number tid;
+        String rolToken;
+        String correo;
+
+        try {
+
+            uid = claims.get("uid", Number.class);
+
+            tid = claims.get("tid", Number.class);
+
+            rolToken = claims.get(
+                    "rol",
+                    String.class
+            );
+
+            correo = claims.getSubject();
+
+        } catch (RuntimeException ex) {
+
+            response.sendError(
+                    HttpServletResponse.SC_UNAUTHORIZED,
+                    "Claims de token invalidos"
+            );
+
+            return;
+        }
+
+        Integer usuarioId = validarUsuarioId(uid);
+
+        // El superadministrador debe:
+        // - tener un ID valido
+        // - tener rol SUPER_ADMIN
+        // - no pertenecer a ninguna tienda
+        // - presentar un correo en el JWT
+
+        if (
+                usuarioId == null ||
+                        tid != null ||
+                        !"SUPER_ADMIN".equals(rolToken) ||
+                        correo == null ||
+                        correo.isBlank()
+        ) {
+
+            response.sendError(
+                    HttpServletResponse.SC_UNAUTHORIZED,
+                    "Token no autorizado"
+            );
+
+            return;
+        }
+
+        // ====================================
+        // CONSULTAR USUARIO REAL
+        // ====================================
+
+        // Esta consulta queda fuera del
+        // catch del JWT. Si falla PostgreSQL,
+        // no se ocultara como token invalido.
+
+        Optional<Usuario> encontrado =
+                usuarios.findByCorreoAndTiendaIdIsNull(
+                        correo
+                );
+
+        if (encontrado.isEmpty()) {
+
+            response.sendError(
+                    HttpServletResponse.SC_UNAUTHORIZED,
+                    "Usuario no encontrado"
+            );
+
+            return;
+        }
+
+        Usuario usuario = encontrado.get();
+
+        // ====================================
+        // VERIFICAR SUPERADMIN EN BD
+        // ====================================
+
+        if (
+                !Objects.equals(
+                        usuario.getIdUsuario(),
+                        usuarioId
+                ) ||
+                        !Boolean.TRUE.equals(
+                                usuario.getEstado()
+                        ) ||
+                        usuario.getTiendaId() != null ||
+                        usuario.getRol() == null ||
+                        !"SUPER_ADMIN".equals(
+                                usuario.getRol().getNombreRol()
+                        )
+        ) {
+
+            response.sendError(
+                    HttpServletResponse.SC_UNAUTHORIZED,
+                    "Usuario no autorizado"
+            );
+
+            return;
+        }
+
+        // ====================================
+        // AUTENTICACION AUTORIZADA
+        // ====================================
+
+        establecerAutenticacion(usuario);
+
+        chain.doFilter(request, response);
+    }
+
+    // ========================================
+    // AUTENTICACION MULTITENANT
+    // ========================================
+
+    private void autenticarTienda(
+            HttpServletRequest request,
+            HttpServletResponse response,
+            FilterChain chain
+    ) throws IOException, ServletException {
+
+        // ====================================
+        // RESOLVER TENANT ACTIVO
+        // ====================================
+
+        // TenantResolver verifica:
+        // 1. Dominio o subdominio.
+        // 2. Existencia de la tienda.
+        // 3. Estado ACTIVA.
+        //
+        // Si esta PENDIENTE o SUSPENDIDA,
+        // devuelve Optional.empty().
+
+        Long tiendaId = resolver
+                .resolver(request)
+                .orElse(null);
+
+        if (tiendaId == null) {
+
+            response.sendError(
+                    HttpServletResponse.SC_NOT_FOUND,
+                    "Tienda no encontrada o no disponible"
+            );
+
+            return;
+        }
+
+        // ====================================
+        // ESTABLECER CONTEXTO MULTITENANT
+        // ====================================
+
+        TenantContext.setCurrentTenant(
+                tiendaId
+        );
+
+        // ====================================
+        // LEER HEADER DE AUTORIZACION
+        // ====================================
+
+        String authorization =
+                request.getHeader("Authorization");
+
+        String token = obtenerBearer(request);
+
+        // Si el cliente envia Authorization
+        // pero no tiene formato Bearer valido,
+        // rechazamos la solicitud.
+
+        if (
+                authorization != null &&
+                        !authorization.isBlank() &&
+                        token == null
+        ) {
+
+            response.sendError(
+                    HttpServletResponse.SC_UNAUTHORIZED,
+                    "Cabecera Authorization invalida"
+            );
+
+            return;
+        }
+
+        // Sin token, dejamos continuar.
+        // Spring Security decide si la ruta
+        // permite acceso publico o requiere
+        // autenticacion.
+
+        if (token == null) {
+
+            chain.doFilter(request, response);
+            return;
+        }
+
+        // ====================================
+        // VERIFICAR JWT
+        // ====================================
+
+        Claims claims;
+
+        try {
+
+            claims = jwt.getClaims(token);
+
+        } catch (
+                JwtException |
+                IllegalArgumentException ex
+        ) {
+
+            response.sendError(
+                    HttpServletResponse.SC_UNAUTHORIZED,
+                    "Token invalido o expirado"
+            );
+
+            return;
+        }
+
+        // ====================================
+        // LEER CLAIMS
+        // ====================================
+
+        Number tokenTenant;
+        Number uid;
+        String rolToken;
+        String correoToken;
+
+        try {
+
+            tokenTenant = claims.get(
+                    "tid",
+                    Number.class
+            );
+
+            uid = claims.get(
+                    "uid",
+                    Number.class
+            );
+
+            rolToken = claims.get(
+                    "rol",
+                    String.class
+            );
+
+            correoToken = claims.getSubject();
+
+        } catch (RuntimeException ex) {
+
+            response.sendError(
+                    HttpServletResponse.SC_UNAUTHORIZED,
+                    "Claims de token invalidos"
+            );
+
+            return;
+        }
+
+        Integer usuarioId = validarUsuarioId(uid);
+
+        // ====================================
+        // AISLAMIENTO POR TIENDA
+        // ====================================
+
+        // Un token de la tienda 7 nunca
+        // debe autenticar usuarios de la 8.
+
+        if (
+                usuarioId == null ||
+                        tokenTenant == null ||
+                        tokenTenant.longValue() != tiendaId.longValue() ||
+                        correoToken == null ||
+                        correoToken.isBlank() ||
+                        rolToken == null ||
+                        "SUPER_ADMIN".equals(rolToken)
+        ) {
+
+            response.sendError(
+                    HttpServletResponse.SC_UNAUTHORIZED,
+                    "Token no autorizado para esta tienda"
+            );
+
+            return;
+        }
+
+        // ====================================
+        // CONSULTAR USUARIO POR ID Y TIENDA
+        // ====================================
+
+        Optional<Usuario> encontrado =
+                usuarios.findByIdUsuarioAndTiendaId(
+                        usuarioId,
+                        tiendaId
+                );
+
+        if (encontrado.isEmpty()) {
+
+            response.sendError(
+                    HttpServletResponse.SC_UNAUTHORIZED,
+                    "Usuario no encontrado"
+            );
+
+            return;
+        }
+
+        Usuario usuario = encontrado.get();
+
+        // ====================================
+        // VERIFICAR USUARIO Y ROL
+        // ====================================
+
+        if (
+                !Boolean.TRUE.equals(
+                        usuario.getEstado()
+                ) ||
+                        usuario.getCorreo() == null ||
+                        !usuario.getCorreo().equalsIgnoreCase(
+                                correoToken
+                        ) ||
+                        usuario.getRol() == null ||
+                        !rolToken.equals(
+                                usuario.getRol().getNombreRol()
+                        )
+        ) {
+
+            response.sendError(
+                    HttpServletResponse.SC_UNAUTHORIZED,
+                    "Usuario no autorizado"
+            );
+
+            return;
+        }
+
+        // ====================================
+        // AUTENTICACION AUTORIZADA
+        // ====================================
+
+        establecerAutenticacion(usuario);
+
+        chain.doFilter(request, response);
+    }
+
+    // ========================================
+    // EXTRAER TOKEN BEARER
+    // ========================================
+
+    private String obtenerBearer(
+            HttpServletRequest request
+    ) {
+
+        String authorization =
+                request.getHeader("Authorization");
+
+        if (
+                authorization == null ||
+                        !authorization.regionMatches(
+                                true,
+                                0,
+                                "Bearer ",
+                                0,
+                                7
+                        )
+        ) {
+
+            return null;
+        }
+
+        String token =
+                authorization.substring(7).trim();
+
+        return token.isEmpty() ? null : token;
+    }
+
+    // ========================================
+    // VALIDAR ID NUMERICO DEL TOKEN
+    // ========================================
+
+    private Integer validarUsuarioId(
+            Number uid
+    ) {
+
+        if (uid == null) {
+            return null;
+        }
+
+        long valor = uid.longValue();
+
+        if (
+                valor <= 0 ||
+                        valor > Integer.MAX_VALUE
+        ) {
+            return null;
+        }
+
+        // Evitar aceptar valores fraccionarios
+        // como identificadores de usuarios.
+
+        if (uid.doubleValue() != (double) valor) {
+            return null;
+        }
+
+        return (int) valor;
+    }
+
+    // ========================================
+    // REGISTRAR AUTENTICACION EN SPRING
+    // ========================================
+
+    private void establecerAutenticacion(
+            Usuario usuario
+    ) {
+
+        String autoridad =
+                "ROLE_" +
+                        usuario.getRol().getNombreRol();
+
+        UsernamePasswordAuthenticationToken autenticacion =
+                new UsernamePasswordAuthenticationToken(
+                        usuario.getCorreo(),
+                        null,
+                        List.of(
+                                new SimpleGrantedAuthority(
+                                        autoridad
+                                )
+                        )
+                );
+
+        SecurityContextHolder
+                .getContext()
+                .setAuthentication(autenticacion);
+    }
+}
+
+===== AuthService.java =====
+package com.tiendasebas.tiendasebas.service;
+
+import com.tiendasebas.tiendasebas.config.TenantContext;
+import com.tiendasebas.tiendasebas.dto.LoginRequest;
+import com.tiendasebas.tiendasebas.dto.LoginResponse;
+import com.tiendasebas.tiendasebas.dto.RegistroRequest;
+import com.tiendasebas.tiendasebas.entity.Rol;
+import com.tiendasebas.tiendasebas.entity.Usuario;
+import com.tiendasebas.tiendasebas.repository.RolRepository;
+import com.tiendasebas.tiendasebas.repository.UsuarioRepository;
+import com.tiendasebas.tiendasebas.security.JwtService;
+
+import org.springframework.http.HttpStatus;
+import org.springframework.security.crypto.password.PasswordEncoder;
+import org.springframework.stereotype.Service;
+import org.springframework.web.server.ResponseStatusException;
+
+import java.util.Locale;
+
+@Service
+public class AuthService {
+
+    private final UsuarioRepository usuarioRepository;
+    private final RolRepository rolRepository;
+    private final PasswordEncoder passwordEncoder;
+    private final JwtService jwtService;
+
+    public AuthService(
+            UsuarioRepository usuarioRepository,
+            RolRepository rolRepository,
+            PasswordEncoder passwordEncoder,
+            JwtService jwtService
+    ) {
+        this.usuarioRepository = usuarioRepository;
+        this.rolRepository = rolRepository;
+        this.passwordEncoder = passwordEncoder;
+        this.jwtService = jwtService;
+    }
+
+    // =====================================================
+    // REGISTRO NORMAL DE CLIENTES
+    // =====================================================
+
+    public String registrar(RegistroRequest request) {
+
+        String nombre = request.getNombre().trim();
+        String apellido = request.getApellido().trim();
+        String correo = request.getCorreo()
+                .trim()
+                .toLowerCase(Locale.ROOT);
+
+        Long tiendaId = TenantContext.getCurrentTenant();
+
+        if (usuarioRepository.existsByCorreoAndTiendaId(
+                correo, tiendaId
+        )) {
+            throw new RuntimeException(
+                    "El correo ya estÃ¡ registrado"
+            );
+        }
+
+        Rol rolCliente = rolRepository.findByNombreRol("CLIENTE")
+                .orElseThrow(() ->
+                        new RuntimeException(
+                                "No existe el rol CLIENTE"
+                        )
+                );
+
+        Usuario usuario = new Usuario();
+
+        usuario.setNombre(nombre);
+        usuario.setApellido(apellido);
+        usuario.setCorreo(correo);
+
+        usuario.setPasswordHash(
+                passwordEncoder.encode(request.getPassword())
+        );
+
+        usuario.setRol(rolCliente);
+        usuario.setTiendaId(tiendaId);
+        usuario.setEstado(true);
+
+        usuarioRepository.save(usuario);
+
+        return "Usuario registrado correctamente";
+    }
+
+    // =====================================================
+    // LOGIN NORMAL DE CADA TIENDA
+    // =====================================================
+
+    public LoginResponse login(LoginRequest request) {
+
+        String correo = request.getCorreo()
+                .trim()
+                .toLowerCase(Locale.ROOT);
+
+        Usuario usuario = usuarioRepository
+                .findByCorreoAndTiendaId(
+                        correo,
+                        TenantContext.getCurrentTenant()
+                )
+                .orElseThrow(() ->
+                        new RuntimeException(
+                                "Correo o contraseÃ±a incorrectos"
+                        )
+                );
+
+        if (!Boolean.TRUE.equals(usuario.getEstado())) {
+            throw new RuntimeException(
+                    "El usuario estÃ¡ deshabilitado"
+            );
+        }
+
+        if (!passwordEncoder.matches(
+                request.getPassword(),
+                usuario.getPasswordHash()
+        )) {
+            throw new RuntimeException(
+                    "Correo o contraseÃ±a incorrectos"
+            );
+        }
+
+        String rol = usuario.getRol().getNombreRol();
+
+        String token = jwtService.generateToken(
+                usuario.getIdUsuario(),
+                usuario.getCorreo(),
+                rol,
+                usuario.getTiendaId()
+        );
+
+        return new LoginResponse(
+                token,
+                usuario.getNombre(),
+                usuario.getCorreo(),
+                rol
+        );
+    }
+
+    // =====================================================
+    // LOGIN EXCLUSIVO PARA SUPERADMINISTRADOR
+    // =====================================================
+
+    public LoginResponse loginSuperAdmin(LoginRequest request) {
+
+        String correo = request.getCorreo() == null
+                ? ""
+                : request.getCorreo()
+                .trim()
+                .toLowerCase(Locale.ROOT);
+
+        String password = request.getPassword();
+
+        if (correo.isBlank()
+                || password == null
+                || password.isBlank()) {
+            throw credencialesInvalidas();
+        }
+
+        // Buscar Ãºnicamente usuarios globales.
+        Usuario usuario = usuarioRepository
+                .findByCorreoAndTiendaIdIsNull(correo)
+                .orElseThrow(this::credencialesInvalidas);
+
+        // Verificar que la cuenta estÃ© habilitada.
+        if (!Boolean.TRUE.equals(usuario.getEstado())) {
+            throw credencialesInvalidas();
+        }
+
+        // Solo SUPER_ADMIN puede usar este acceso.
+        if (usuario.getRol() == null
+                || !"SUPER_ADMIN".equals(
+                usuario.getRol().getNombreRol()
+        )) {
+            throw credencialesInvalidas();
+        }
+
+        // Comprobar contraseÃ±a mediante BCrypt.
+        if (!passwordEncoder.matches(
+                password,
+                usuario.getPasswordHash()
+        )) {
+            throw credencialesInvalidas();
+        }
+
+        // El usuario global no pertenece a una tienda.
+        // Hay que verificar que JwtService admita tenantId null.
+        String token = jwtService.generateToken(
+                usuario.getIdUsuario(),
+                usuario.getCorreo(),
+                "SUPER_ADMIN",
+                null
+        );
+
+        return new LoginResponse(
+                token,
+                usuario.getNombre(),
+                usuario.getCorreo(),
+                "SUPER_ADMIN"
+        );
+    }
+
+    private ResponseStatusException credencialesInvalidas() {
+        return new ResponseStatusException(
+                HttpStatus.UNAUTHORIZED,
+                "Credenciales incorrectas"
+        );
+    }
+}
+
+===== PerfilController.java =====
+
+package com.tiendasebas.tiendasebas.controller;
+
+import com.tiendasebas.tiendasebas.dto.ActualizarPerfilRequest;
+import com.tiendasebas.tiendasebas.dto.CambiarContrasenaRequest;
+import com.tiendasebas.tiendasebas.dto.PerfilResponse;
+import com.tiendasebas.tiendasebas.service.PerfilService;
+
+import jakarta.validation.Valid;
+
+import org.springframework.http.HttpStatus;
+import org.springframework.security.access.prepost.PreAuthorize;
+import org.springframework.web.bind.annotation.*;
+
+@RestController
+@RequestMapping("/api/perfil")
+@PreAuthorize("hasAnyRole('ADMIN', 'CLIENTE')")
+public class PerfilController {
+
+    private final PerfilService service;
+
+    public PerfilController(PerfilService service) {
+        this.service = service;
+    }
+
+    @GetMapping
+    public PerfilResponse obtener() {
+        return service.obtenerMiPerfil();
+    }
+
+    @PutMapping
+    public PerfilResponse actualizar(
+            @Valid @RequestBody ActualizarPerfilRequest datos
+    ) {
+        return service.actualizarMiPerfil(datos);
+    }
+
+    @PutMapping("/contrasena")
+    @ResponseStatus(HttpStatus.NO_CONTENT)
+    public void cambiarContrasena(
+            @Valid @RequestBody CambiarContrasenaRequest datos
+    ) {
+        service.cambiarMiContrasena(datos);
+    }
+}
+

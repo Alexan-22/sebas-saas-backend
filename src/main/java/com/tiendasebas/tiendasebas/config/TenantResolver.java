@@ -75,15 +75,29 @@ public class TenantResolver {
 
         if (
                 host.equals("localhost") ||
-                        host.equals("127.0.0.1") ||
-                        host.equals("::1")
+                host.equals("127.0.0.1") ||
+                host.equals("::1")
         ) {
 
-            // Conservar el comportamiento actual:
-            // localhost corresponde a la tienda
-            // definida por localSubdomain.
-
+            // Compatibilidad con la configuracion actual.
             subdominio = localSubdomain;
+
+        } else if (host.endsWith(".localhost")) {
+
+            // Desarrollo: un solo servidor para varias tiendas.
+            String prefijoLocal = host.substring(
+                    0,
+                    host.length() - ".localhost".length()
+            );
+
+            // Solo un subdominio sencillo y valido.
+            if (!prefijoLocal.matches(
+                    "[a-z0-9](?:[a-z0-9-]{0,48}[a-z0-9])?"
+            )) {
+                return Optional.empty();
+            }
+
+            subdominio = prefijoLocal;
 
         } else {
 

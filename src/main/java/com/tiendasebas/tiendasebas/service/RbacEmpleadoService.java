@@ -1,3 +1,4 @@
+
 package com.tiendasebas.tiendasebas.service;
 
 import com.tiendasebas.tiendasebas.config.TenantContext;
@@ -43,6 +44,97 @@ public class RbacEmpleadoService {
             Boolean activo
     ) {}
 
+    private Long tiendaActual() {
+        Long tiendaId = TenantContext.getCurrentTenant();
+
+        if (tiendaId == null || tiendaId <= 0) {
+            throw new ResponseStatusException(
+                    HttpStatus.UNAUTHORIZED,
+                    "Tienda no identificada"
+            );
+        }
+
+        return tiendaId;
+    }
+
+    private String normalizarCorreo(String correo) {
+        if (correo == null || correo.isBlank()) {
+            throw new ResponseStatusException(
+                    HttpStatus.BAD_REQUEST,
+                    "El correo es obligatorio"
+            );
+        }
+
+        String email = correo.trim().toLowerCase(Locale.ROOT);
+
+        if (email.length() > 150) {
+            throw new ResponseStatusException(
+                    HttpStatus.BAD_REQUEST,
+                    "Correo demasiado largo"
+            );
+        }
+
+        return email;
+    }
+
+    private void validarPassword(String password) {
+        if (password == null ||
+                password.length() < 10 ||
+                password.length() > 72 ||
+                password.getBytes(StandardCharsets.UTF_8).length > 72) {
+
+            throw new ResponseStatusException(
+                    HttpStatus.BAD_REQUEST,
+                    "Contrasena invalida"
+            );
+        }
+    }
+
+    private Usuario obtenerEmpleado(Integer usuarioId) {
+        if (usuarioId == null || usuarioId <= 0) {
+            throw new ResponseStatusException(
+                    HttpStatus.BAD_REQUEST,
+                    "Identificador invalido"
+            );
+        }
+
+        Usuario usuario = usuarios
+                .findByIdUsuarioAndTiendaId(
+                        usuarioId,
+                        tiendaActual()
+                )
+                .orElseThrow(() ->
+                        new ResponseStatusException(
+                                HttpStatus.NOT_FOUND,
+                                "Administrador no encontrado"
+                        )
+                );
+
+        if (usuario.getRol() == null ||
+                !"EMPLEADO".equals(
+                        usuario.getRol().getNombreRol()
+                )) {
+
+            throw new ResponseStatusException(
+                    HttpStatus.NOT_FOUND,
+                    "Administrador no encontrado"
+            );
+        }
+
+        return usuario;
+    }
+
+    private EmpleadoResponse convertir(Usuario usuario) {
+        return new EmpleadoResponse(
+                usuario.getIdUsuario(),
+                usuario.getNombre(),
+                usuario.getApellido(),
+                usuario.getCorreo(),
+                "EMPLEADO",
+                usuario.getEstado()
+        );
+    }
+
     @Transactional
     public EmpleadoResponse crear(
             String nombre,
@@ -50,11 +142,11 @@ public class RbacEmpleadoService {
             String correo,
             String password
     ) {
-        Long tiendaId = TenantContext.getCurrentTenant();
+        Long tiendaId = tiendaActual();
+        String email = normalizarCorreo(correo);
 
-        String email = correo.trim().toLowerCase(Locale.ROOT);
+        validarPassword(password);
 
-        // La tabla usuarios tiene correo UNIQUE global.
         if (usuarios.existsByCorreo(email)) {
             throw new ResponseStatusException(
                     HttpStatus.CONFLICT,
@@ -62,18 +154,13 @@ public class RbacEmpleadoService {
             );
         }
 
-        if (password.getBytes(StandardCharsets.UTF_8).length > 72) {
-            throw new ResponseStatusException(
-                    HttpStatus.BAD_REQUEST,
-                    "La contrasena supera el limite permitido"
-            );
-        }
-
         Rol rolEmpleado = roles.findByNombreRol("EMPLEADO")
-                .orElseThrow(() -> new ResponseStatusException(
-                        HttpStatus.CONFLICT,
-                        "Primero registre el rol EMPLEADO"
-                ));
+                .orElseThrow(() ->
+                        new ResponseStatusException(
+                                HttpStatus.CONFLICT,
+                                "No existe el rol EMPLEADO"
+                        )
+                );
 
         Usuario empleado = new Usuario();
         empleado.setNombre(nombre.trim());
@@ -85,41 +172,71 @@ public class RbacEmpleadoService {
         empleado.setEstado(true);
 
         try {
-            Usuario guardado = usuarios.saveAndFlush(empleado);
-
-            return new EmpleadoResponse(
-                    guardado.getIdUsuario(),
-                    guardado.getNombre(),
-                    guardado.getApellido(),
-                    guardado.getCorreo(),
-                    "EMPLEADO",
-                    guardado.getEstado()
-            );
+            return convertir(usuarios.saveAndFlush(empleado));
         } catch (DataIntegrityViolationException ex) {
             throw new ResponseStatusException(
                     HttpStatus.CONFLICT,
-                    "No se pudo registrar el empleado"
+                    "No se pudo registrar el administrador"
             );
         }
     }
 
     @Transactional(readOnly = true)
     public List<EmpleadoResponse> listar() {
-        Long tiendaId = TenantContext.getCurrentTenant();
-
-        return usuarios.findByTiendaId(tiendaId)
+        return usuarios.findByTiendaId(tiendaActual())
                 .stream()
-                .filter(u -> u.getRol() != null)
-                .filter(u -> "EMPLEADO".equals(
-                        u.getRol().getNombreRol()))
-                .map(u -> new EmpleadoResponse(
-                        u.getIdUsuario(),
-                        u.getNombre(),
-                        u.getApellido(),
-                        u.getCorreo(),
-                        "EMPLEADO",
-                        u.getEstado()
-                ))
+                .filter(usuario ->
+                        usuario.getRol() != null &&
+                                "EMPLEADO".equals(
+                                        usuario.getRol().getNombreRol()
+                                )
+                )
+                .map(this::convertir)
                 .toList();
+    }
+
+    @Transactional
+    public EmpleadoResponse editar(
+            Integer usuarioId,
+            String nombre,
+            String apellido,
+            String correo
+    ) {
+        Usuario empleado = obtenerEmpleado(usuarioId);
+        String email = normalizarCorreo(correo);
+
+        if (!empleado.getCorreo().equalsIgnoreCase(email) &&
+                usuarios.existsByCorreo(email)) {
+
+            throw new ResponseStatusException(
+                    HttpStatus.CONFLICT,
+                    "El correo ya esta registrado"
+            );
+        }
+
+        empleado.setNombre(nombre.trim());
+        empleado.setApellido(apellido.trim());
+        empleado.setCorreo(email);
+
+        return convertir(usuarios.saveAndFlush(empleado));
+    }
+
+    @Transactional
+    public EmpleadoResponse cambiarEstado(
+            Integer usuarioId,
+            Boolean activo
+    ) {
+        if (activo == null) {
+            throw new ResponseStatusException(
+                    HttpStatus.BAD_REQUEST,
+                    "Estado obligatorio"
+            );
+        }
+
+        Usuario empleado = obtenerEmpleado(usuarioId);
+
+        empleado.setEstado(activo);
+
+        return convertir(usuarios.saveAndFlush(empleado));
     }
 }

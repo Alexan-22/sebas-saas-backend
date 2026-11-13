@@ -1,0 +1,565 @@
+﻿===== RbacEmpleadoController.java =====
+package com.tiendasebas.tiendasebas.controller;
+
+import com.tiendasebas.tiendasebas.service.RbacEmpleadoService;
+import com.tiendasebas.tiendasebas.service.RbacEmpleadoService.EmpleadoResponse;
+
+import jakarta.validation.Valid;
+import jakarta.validation.constraints.Email;
+import jakarta.validation.constraints.NotBlank;
+import jakarta.validation.constraints.Size;
+
+import org.springframework.http.HttpStatus;
+import org.springframework.security.access.prepost.PreAuthorize;
+import org.springframework.web.bind.annotation.*;
+
+import java.util.List;
+
+@RestController
+@RequestMapping("/api/rbac/admin/empleados")
+@PreAuthorize("hasRole('ADMIN')")
+public class RbacEmpleadoController {
+
+    private final RbacEmpleadoService servicio;
+
+    public RbacEmpleadoController(RbacEmpleadoService servicio) {
+        this.servicio = servicio;
+    }
+
+    public record CrearEmpleadoRequest(
+            @NotBlank
+            @Size(max = 100)
+            String nombre,
+
+            @NotBlank
+            @Size(max = 100)
+            String apellido,
+
+            @NotBlank
+            @Email
+            @Size(max = 150)
+            String correo,
+
+            @NotBlank
+            @Size(min = 10, max = 72)
+            String password
+    ) {}
+
+    @PostMapping
+    @ResponseStatus(HttpStatus.CREATED)
+    public EmpleadoResponse crear(
+            @Valid @RequestBody CrearEmpleadoRequest request
+    ) {
+        return servicio.crear(
+                request.nombre(),
+                request.apellido(),
+                request.correo(),
+                request.password()
+        );
+    }
+
+    @GetMapping
+    public List<EmpleadoResponse> listar() {
+        return servicio.listar();
+    }
+}
+
+===== RbacEmpleadoService.java =====
+package com.tiendasebas.tiendasebas.service;
+
+import com.tiendasebas.tiendasebas.config.TenantContext;
+import com.tiendasebas.tiendasebas.entity.Rol;
+import com.tiendasebas.tiendasebas.entity.Usuario;
+import com.tiendasebas.tiendasebas.repository.RolRepository;
+import com.tiendasebas.tiendasebas.repository.UsuarioRepository;
+
+import org.springframework.dao.DataIntegrityViolationException;
+import org.springframework.http.HttpStatus;
+import org.springframework.security.crypto.password.PasswordEncoder;
+import org.springframework.stereotype.Service;
+import org.springframework.transaction.annotation.Transactional;
+import org.springframework.web.server.ResponseStatusException;
+
+import java.nio.charset.StandardCharsets;
+import java.util.List;
+import java.util.Locale;
+
+@Service
+public class RbacEmpleadoService {
+
+    private final UsuarioRepository usuarios;
+    private final RolRepository roles;
+    private final PasswordEncoder encoder;
+
+    public RbacEmpleadoService(
+            UsuarioRepository usuarios,
+            RolRepository roles,
+            PasswordEncoder encoder
+    ) {
+        this.usuarios = usuarios;
+        this.roles = roles;
+        this.encoder = encoder;
+    }
+
+    public record EmpleadoResponse(
+            Integer id,
+            String nombre,
+            String apellido,
+            String correo,
+            String rol,
+            Boolean activo
+    ) {}
+
+    @Transactional
+    public EmpleadoResponse crear(
+            String nombre,
+            String apellido,
+            String correo,
+            String password
+    ) {
+        Long tiendaId = TenantContext.getCurrentTenant();
+
+        String email = correo.trim().toLowerCase(Locale.ROOT);
+
+        // La tabla usuarios tiene correo UNIQUE global.
+        if (usuarios.existsByCorreo(email)) {
+            throw new ResponseStatusException(
+                    HttpStatus.CONFLICT,
+                    "El correo ya esta registrado"
+            );
+        }
+
+        if (password.getBytes(StandardCharsets.UTF_8).length > 72) {
+            throw new ResponseStatusException(
+                    HttpStatus.BAD_REQUEST,
+                    "La contrasena supera el limite permitido"
+            );
+        }
+
+        Rol rolEmpleado = roles.findByNombreRol("EMPLEADO")
+                .orElseThrow(() -> new ResponseStatusException(
+                        HttpStatus.CONFLICT,
+                        "Primero registre el rol EMPLEADO"
+                ));
+
+        Usuario empleado = new Usuario();
+        empleado.setNombre(nombre.trim());
+        empleado.setApellido(apellido.trim());
+        empleado.setCorreo(email);
+        empleado.setPasswordHash(encoder.encode(password));
+        empleado.setTiendaId(tiendaId);
+        empleado.setRol(rolEmpleado);
+        empleado.setEstado(true);
+
+        try {
+            Usuario guardado = usuarios.saveAndFlush(empleado);
+
+            return new EmpleadoResponse(
+                    guardado.getIdUsuario(),
+                    guardado.getNombre(),
+                    guardado.getApellido(),
+                    guardado.getCorreo(),
+                    "EMPLEADO",
+                    guardado.getEstado()
+            );
+        } catch (DataIntegrityViolationException ex) {
+            throw new ResponseStatusException(
+                    HttpStatus.CONFLICT,
+                    "No se pudo registrar el empleado"
+            );
+        }
+    }
+
+    @Transactional(readOnly = true)
+    public List<EmpleadoResponse> listar() {
+        Long tiendaId = TenantContext.getCurrentTenant();
+
+        return usuarios.findByTiendaId(tiendaId)
+                .stream()
+                .filter(u -> u.getRol() != null)
+                .filter(u -> "EMPLEADO".equals(
+                        u.getRol().getNombreRol()))
+                .map(u -> new EmpleadoResponse(
+                        u.getIdUsuario(),
+                        u.getNombre(),
+                        u.getApellido(),
+                        u.getCorreo(),
+                        "EMPLEADO",
+                        u.getEstado()
+                ))
+                .toList();
+    }
+}
+
+===== RbacAsignacionController.java =====
+package com.tiendasebas.tiendasebas.controller;
+
+import com.tiendasebas.tiendasebas.service.RbacAsignacionService;
+import org.springframework.http.HttpStatus;
+import org.springframework.security.access.prepost.PreAuthorize;
+import org.springframework.web.bind.annotation.*;
+
+import java.util.List;
+import java.util.Map;
+
+@RestController
+@RequestMapping("/api/rbac/admin/empleados")
+@PreAuthorize("hasRole('ADMIN')")
+public class RbacAsignacionController {
+
+    private final RbacAsignacionService servicio;
+
+    public RbacAsignacionController(
+            RbacAsignacionService servicio) {
+        this.servicio = servicio;
+    }
+
+    @PostMapping("/{usuarioId}/roles/{rolId}")
+    @ResponseStatus(HttpStatus.NO_CONTENT)
+    public void asignar(
+            @PathVariable Integer usuarioId,
+            @PathVariable Long rolId) {
+        servicio.asignar(usuarioId, rolId);
+    }
+
+    @GetMapping("/{usuarioId}/roles")
+    public List<Map<String, Object>> listar(
+            @PathVariable Integer usuarioId) {
+        return servicio.rolesDeEmpleado(usuarioId);
+    }
+
+    @DeleteMapping("/{usuarioId}/roles/{rolId}")
+    @ResponseStatus(HttpStatus.NO_CONTENT)
+    public void revocar(
+            @PathVariable Integer usuarioId,
+            @PathVariable Long rolId) {
+        servicio.revocar(usuarioId, rolId);
+    }
+}
+
+===== RbacAsignacionService.java =====
+package com.tiendasebas.tiendasebas.service;
+
+import com.tiendasebas.tiendasebas.config.TenantContext;
+import org.springframework.http.HttpStatus;
+import org.springframework.jdbc.core.JdbcTemplate;
+import org.springframework.stereotype.Service;
+import org.springframework.transaction.annotation.Transactional;
+import org.springframework.web.server.ResponseStatusException;
+
+import java.util.List;
+import java.util.Map;
+
+@Service
+public class RbacAsignacionService {
+
+    private final JdbcTemplate jdbc;
+
+    public RbacAsignacionService(JdbcTemplate jdbc) {
+        this.jdbc = jdbc;
+    }
+
+    @Transactional
+    public void asignar(Integer usuarioId, Long rolId) {
+        Long tiendaId = TenantContext.getCurrentTenant();
+
+        if (usuarioId == null || usuarioId <= 0
+                || rolId == null || rolId <= 0) {
+            throw new ResponseStatusException(
+                    HttpStatus.BAD_REQUEST, "Identificadores invalidos");
+        }
+
+        Boolean empleado = jdbc.queryForObject("""
+            SELECT EXISTS (
+                SELECT 1
+                FROM public.usuarios u
+                JOIN public.roles r ON r.id_rol = u.id_rol
+                WHERE u.id_usuario = ?
+                  AND u.tienda_id = ?
+                  AND u.estado = TRUE
+                  AND r.nombre_rol = 'EMPLEADO'
+            )
+            """, Boolean.class, usuarioId, tiendaId);
+
+        if (!Boolean.TRUE.equals(empleado)) {
+            throw new ResponseStatusException(
+                    HttpStatus.NOT_FOUND,
+                    "Empleado activo no encontrado en esta tienda");
+        }
+
+        Boolean rolValido = jdbc.queryForObject("""
+            SELECT EXISTS (
+                SELECT 1
+                FROM public.rbac_roles
+                WHERE id = ?
+                  AND tienda_id = ?
+                  AND activo = TRUE
+            )
+            """, Boolean.class, rolId, tiendaId);
+
+        if (!Boolean.TRUE.equals(rolValido)) {
+            throw new ResponseStatusException(
+                    HttpStatus.NOT_FOUND,
+                    "Rol activo no encontrado en esta tienda");
+        }
+
+        int filas = jdbc.update("""
+            INSERT INTO public.rbac_usuarios_roles
+                (tienda_id, usuario_id, rol_id)
+            VALUES (?, ?, ?)
+            ON CONFLICT DO NOTHING
+            """, tiendaId, usuarioId, rolId);
+
+        if (filas == 0) {
+            throw new ResponseStatusException(
+                    HttpStatus.CONFLICT,
+                    "El empleado ya tiene asignado ese rol");
+        }
+    }
+
+    public List<Map<String, Object>> rolesDeEmpleado(
+            Integer usuarioId) {
+        Long tiendaId = TenantContext.getCurrentTenant();
+
+        return jdbc.queryForList("""
+            SELECT r.id, r.nombre, r.descripcion, r.activo
+            FROM public.rbac_usuarios_roles ur
+            JOIN public.rbac_roles r
+              ON r.id = ur.rol_id
+             AND r.tienda_id = ur.tienda_id
+            WHERE ur.tienda_id = ?
+              AND ur.usuario_id = ?
+            ORDER BY r.nombre
+            """, tiendaId, usuarioId);
+    }
+
+    @Transactional
+    public void revocar(Integer usuarioId, Long rolId) {
+        Long tiendaId = TenantContext.getCurrentTenant();
+
+        int filas = jdbc.update("""
+            DELETE FROM public.rbac_usuarios_roles
+            WHERE tienda_id = ?
+              AND usuario_id = ?
+              AND rol_id = ?
+            """, tiendaId, usuarioId, rolId);
+
+        if (filas == 0) {
+            throw new ResponseStatusException(
+                    HttpStatus.NOT_FOUND,
+                    "Asignacion no encontrada");
+        }
+    }
+}
+
+===== RbacGestionController.java =====
+package com.tiendasebas.tiendasebas.controller;
+
+import com.tiendasebas.tiendasebas.service.RbacGestionService;
+
+import jakarta.validation.Valid;
+import jakarta.validation.constraints.NotBlank;
+import jakarta.validation.constraints.NotNull;
+import jakarta.validation.constraints.Size;
+
+import org.springframework.http.HttpStatus;
+import org.springframework.security.access.prepost.PreAuthorize;
+import org.springframework.web.bind.annotation.*;
+
+import java.util.List;
+import java.util.Map;
+
+@RestController
+@RequestMapping("/api/rbac/admin/roles")
+@PreAuthorize("hasRole('ADMIN')")
+public class RbacGestionController {
+
+    private final RbacGestionService servicio;
+
+    public RbacGestionController(RbacGestionService servicio) {
+        this.servicio = servicio;
+    }
+
+    public record CrearRolRequest(
+            @NotBlank
+            @Size(max = 80)
+            String nombre,
+
+            @Size(max = 200)
+            String descripcion,
+
+            @NotNull
+            @Size(max = 50)
+            List<String> permisos
+    ) {}
+
+    @PostMapping
+    @ResponseStatus(HttpStatus.CREATED)
+    public Map<String, Object> crear(
+            @Valid @RequestBody CrearRolRequest request
+    ) {
+        return servicio.crearRol(
+                request.nombre(),
+                request.descripcion(),
+                request.permisos()
+        );
+    }
+}
+
+===== RbacGestionService.java =====
+package com.tiendasebas.tiendasebas.service;
+
+import com.tiendasebas.tiendasebas.config.TenantContext;
+import org.springframework.dao.DuplicateKeyException;
+import org.springframework.http.HttpStatus;
+import org.springframework.jdbc.core.JdbcTemplate;
+import org.springframework.stereotype.Service;
+import org.springframework.transaction.annotation.Transactional;
+import org.springframework.web.server.ResponseStatusException;
+
+import java.util.List;
+import java.util.Map;
+
+@Service
+public class RbacGestionService {
+
+    private final JdbcTemplate jdbc;
+
+    public RbacGestionService(JdbcTemplate jdbc) {
+        this.jdbc = jdbc;
+    }
+
+    @Transactional
+    public Map<String, Object> crearRol(
+            String nombre,
+            String descripcion,
+            List<String> permisos
+    ) {
+        Long tiendaId = TenantContext.getCurrentTenant();
+
+        if (nombre == null || nombre.isBlank()
+                || nombre.trim().length() > 80) {
+            throw new ResponseStatusException(
+                    HttpStatus.BAD_REQUEST,
+                    "Nombre de rol invalido"
+            );
+        }
+
+        if (descripcion != null && descripcion.length() > 200) {
+            throw new ResponseStatusException(
+                    HttpStatus.BAD_REQUEST,
+                    "Descripcion demasiado larga"
+            );
+        }
+
+        if (permisos == null || permisos.size() > 50) {
+            throw new ResponseStatusException(
+                    HttpStatus.BAD_REQUEST,
+                    "Lista de permisos invalida"
+            );
+        }
+
+        List<String> codigos = permisos.stream()
+                .map(c -> c == null ? "" : c.trim())
+                .distinct()
+                .toList();
+
+        for (String codigo : codigos) {
+            Boolean existe = jdbc.queryForObject("""
+                SELECT EXISTS (
+                    SELECT 1
+                    FROM public.rbac_permisos
+                    WHERE codigo = ?
+                )
+                """, Boolean.class, codigo);
+
+            if (!Boolean.TRUE.equals(existe)) {
+                throw new ResponseStatusException(
+                        HttpStatus.BAD_REQUEST,
+                        "Permiso desconocido: " + codigo
+                );
+            }
+        }
+
+        Long rolId;
+
+        try {
+            rolId = jdbc.queryForObject("""
+                INSERT INTO public.rbac_roles
+                    (tienda_id, nombre, descripcion)
+                VALUES (?, ?, ?)
+                RETURNING id
+                """,
+                Long.class,
+                tiendaId,
+                nombre.trim(),
+                descripcion
+            );
+        } catch (DuplicateKeyException ex) {
+            throw new ResponseStatusException(
+                    HttpStatus.CONFLICT,
+                    "Ya existe un rol con ese nombre"
+            );
+        }
+
+        for (String codigo : codigos) {
+            jdbc.update("""
+                INSERT INTO public.rbac_roles_permisos
+                    (tienda_id, rol_id, permiso_codigo)
+                VALUES (?, ?, ?)
+                """,
+                tiendaId,
+                rolId,
+                codigo
+            );
+        }
+
+        return Map.of(
+                "id", rolId,
+                "nombre", nombre.trim(),
+                "permisos", codigos,
+                "activo", true
+        );
+    }
+}
+
+===== UsuarioRepository.java =====
+package com.tiendasebas.tiendasebas.repository;
+
+import com.tiendasebas.tiendasebas.entity.Usuario;
+import org.springframework.data.jpa.repository.JpaRepository;
+import org.springframework.stereotype.Repository;
+
+import java.util.List;
+import java.util.Optional;
+
+@Repository
+public interface UsuarioRepository extends JpaRepository<Usuario, Integer> {
+
+    // MÃ©todo requerido por JwtAuthenticationFilter y AuthService
+    Optional<Usuario> findByCorreo(String correo);
+
+    // MÃ©todo requerido por AuthService
+    boolean existsByCorreo(String correo);
+
+    // MÃ©todos Multi-tenant
+    Optional<Usuario> findByCorreoAndTiendaId(String correo, Long tiendaId);
+    boolean existsByCorreoAndTiendaId(String correo, Long tiendaId);
+    List<Usuario> findByTiendaId(Long tiendaId);
+    Optional<Usuario> findByIdUsuarioAndTiendaId(Integer idUsuario, Long tiendaId);
+    Optional<Usuario> findByCorreoAndTiendaIdIsNull(String correo);
+}
+
+===== RolRepository.java =====
+package com.tiendasebas.tiendasebas.repository;
+
+import com.tiendasebas.tiendasebas.entity.Rol;
+import org.springframework.data.jpa.repository.JpaRepository;
+
+import java.util.Optional;
+
+public interface RolRepository extends JpaRepository<Rol, Integer> {
+
+    Optional<Rol> findByNombreRol(String nombreRol);
+}
+
