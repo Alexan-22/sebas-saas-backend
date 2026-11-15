@@ -103,4 +103,7 @@ public class TransferenciasController {
             @PathVariable int idVenta,@Valid @RequestBody Rechazo req,Authentication auth){
         return ResponseEntity.ok().cacheControl(CacheControl.noStore()).body(service.decidir(idVenta,auth.getName(),false,req.motivo()));
     }
+    @GetMapping("/pagos/admin/reportes")
+    @org.springframework.security.access.prepost.PreAuthorize("hasRole('ADMIN')")
+    public com.tiendasebas.tiendasebas.dto.PaginaPagos<com.tiendasebas.tiendasebas.transferencias.TransferenciaManualService.Pago> paginaReportes(@RequestParam(required=false) Integer cursor,@RequestParam(defaultValue="100") int size){return service.paginaReportes(cursor,size);}
 }

@@ -19,6 +19,11 @@ import java.util.Date;
 
 @Service
 public class JwtService {
+    private final SesionService sesiones;
+    public JwtService(SesionService sesiones) { this.sesiones=sesiones; }
+    public boolean sesionVigente(Claims claims, com.tiendasebas.tiendasebas.entity.Usuario usuario) {
+        return sesiones.validar(claims.getId(),usuario.getIdUsuario(),usuario.getTiendaId());
+    }
 
     @Value("${app.jwt.secret}")
     private String secret;
@@ -72,6 +77,7 @@ public class JwtService {
     ) {
         JwtBuilder builder = Jwts.builder()
                 .subject(correo)
+                .id(sesiones.crear(usuarioId,tiendaId).toString())
                 .claim("uid", usuarioId)
                 .claim("rol", rol)
                 .claim("cv", versionCredenciales(passwordHash));
@@ -81,7 +87,7 @@ public class JwtService {
         }
         return builder
                 .issuedAt(new Date())
-                .expiration(new Date(System.currentTimeMillis() + expiration))
+                .expiration(new Date(System.currentTimeMillis() + Math.min(expiration,sesiones.absoluteMillis())))
                 .signWith(key())
                 .compact();
     }

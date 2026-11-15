@@ -13,7 +13,10 @@ class JwtCredencialesRevocacionTest {
 
     @BeforeEach
     void configurar() {
-        jwt = new JwtService();
+        SesionService sesiones = org.mockito.Mockito.mock(SesionService.class);
+        org.mockito.Mockito.when(sesiones.crear(org.mockito.ArgumentMatchers.any(),org.mockito.ArgumentMatchers.any())).thenReturn(java.util.UUID.randomUUID());
+        org.mockito.Mockito.when(sesiones.absoluteMillis()).thenReturn(28800000L);
+        jwt = new JwtService(sesiones);
         ReflectionTestUtils.setField(jwt, "secret",
                 "clave-segura-de-pruebas-de-64-caracteres-para-firma-jwt-sebas-2026");
         ReflectionTestUtils.setField(jwt, "expiration", 3600000L);

@@ -350,6 +350,7 @@ public class SuperAdminPropietarioController {
         usuario.setApellido(apellido);
         usuario.setCorreo(correo);
 
+        com.tiendasebas.tiendasebas.security.PasswordPolicy.validar(request.contrasena());
         usuario.setPasswordHash(
                 passwordEncoder.encode(
                         request.contrasena()

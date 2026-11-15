@@ -58,4 +58,7 @@ public class ContraEntregaController {
         }
         return ResponseEntity.ok(service.consultarPropio(ventaId, authentication.getName()));
     }
+    @GetMapping("/admin/contraentrega/reportes")
+    @org.springframework.security.access.prepost.PreAuthorize("hasRole('ADMIN')")
+    public com.tiendasebas.tiendasebas.dto.PaginaPagos<com.tiendasebas.tiendasebas.service.ContraEntregaService.Cobro> paginaReportes(@RequestParam(required=false) Integer cursor,@RequestParam(defaultValue="100") int size){return service.paginaReportes(cursor,size);}
 }

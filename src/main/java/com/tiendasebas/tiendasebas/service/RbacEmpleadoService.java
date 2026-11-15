@@ -78,6 +78,7 @@ public class RbacEmpleadoService {
     }
 
     private void validarPassword(String password) {
+        com.tiendasebas.tiendasebas.security.PasswordPolicy.validar(password);
         if (password == null || password.isBlank() ||
                 password.length() < 10 ||
                 password.length() > 72 ||
@@ -216,6 +217,7 @@ public class RbacEmpleadoService {
 
         empleado.setNombre(nombre.trim());
         empleado.setApellido(apellido.trim());
+        if(!java.util.Objects.equals(empleado.getCorreo(),email))empleado.revocarSesiones();
         empleado.setCorreo(email);
 
         return convertir(usuarios.saveAndFlush(empleado));

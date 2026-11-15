@@ -12,7 +12,7 @@ import org.springframework.http.HttpStatus;
 import org.springframework.security.authentication.AnonymousAuthenticationToken;
 import org.springframework.security.core.Authentication;
 import org.springframework.security.core.context.SecurityContextHolder;
-import org.springframework.security.crypto.password.PasswordEncoder;
+import com.tiendasebas.tiendasebas.security.PasswordRecoveryService;
 import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
 import org.springframework.web.server.ResponseStatusException;
@@ -21,14 +21,16 @@ import org.springframework.web.server.ResponseStatusException;
 public class PerfilService {
 
     private final UsuarioRepository usuarios;
-    private final PasswordEncoder passwordEncoder;
+    private final PasswordRecoveryService recovery;
+    private final com.tiendasebas.tiendasebas.security.AuthRateLimit limites;
 
     public PerfilService(
             UsuarioRepository usuarios,
-            PasswordEncoder passwordEncoder
+            PasswordRecoveryService recovery, com.tiendasebas.tiendasebas.security.AuthRateLimit limites
     ) {
         this.usuarios = usuarios;
-        this.passwordEncoder = passwordEncoder;
+        this.recovery = recovery;
+        this.limites = limites;
     }
 
     private Usuario usuarioActual() {
@@ -118,50 +120,11 @@ public class PerfilService {
         return convertir(actualizado);
     }
 
-    @Transactional
-    public void cambiarMiContrasena(
-            CambiarContrasenaRequest datos
-    ) {
-        Usuario usuario = usuarioActual();
-
-        if (!passwordEncoder.matches(
-                datos.contrasenaActual(),
-                usuario.getPasswordHash()
-        )) {
-            throw new ResponseStatusException(
-                    HttpStatus.BAD_REQUEST,
-                    "La contraseña actual es incorrecta"
-            );
-        }
-
-        if (!datos.contrasenaNueva()
-                .equals(datos.confirmarContrasena())) {
-
-            throw new ResponseStatusException(
-                    HttpStatus.BAD_REQUEST,
-                    "Las contraseñas nuevas no coinciden"
-            );
-        }
-
-        if (datos.contrasenaNueva().equals(datos.contrasenaActual())) {
-            throw new ResponseStatusException(
-                    HttpStatus.BAD_REQUEST,
-                    "La nueva contraseña debe ser diferente"
-            );
-        }
-
-        if (datos.contrasenaNueva().length() < 12
-                || datos.contrasenaNueva().length() > 128) {
-            throw new ResponseStatusException(
-                    HttpStatus.BAD_REQUEST,
-                    "La contraseña debe tener entre 12 y 128 caracteres"
-            );
-        }
-
-        usuario.setPasswordHash(
-                passwordEncoder.encode(datos.contrasenaNueva())
-        );
-
-        usuarios.save(usuario);
+    public void cambiarMiContrasena(CambiarContrasenaRequest datos) {
+        if (!java.util.Objects.equals(datos.contrasenaNueva(),datos.confirmarContrasena()))throw new ResponseStatusException(HttpStatus.BAD_REQUEST,"Las contrasenas nuevas no coinciden");
+        if(java.util.Objects.equals(datos.contrasenaActual(),datos.contrasenaNueva()))throw new ResponseStatusException(HttpStatus.BAD_REQUEST,"La nueva contrasena debe ser diferente");
+        Usuario usuario=usuarioActual();
+        limites.comprobar("password-change:"+usuario.getTiendaId(),usuario.getCorreo(),10);
+        recovery.cambiar(usuario.getCorreo(),usuario.getTiendaId(),datos.contrasenaActual(),datos.contrasenaNueva());
     }
 }

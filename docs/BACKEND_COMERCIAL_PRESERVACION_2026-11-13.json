@@ -1,0 +1,12 @@
+{
+  "missing": [],
+  "branch": "feat/ecommerce-only",
+  "head": "46e515a5473838b2426d932fb0ed606bc78cdda6",
+  "changed": [
+    "src/main/java/com/tiendasebas/tiendasebas/controller/SuperAdminPlanController.java",
+    "src/main/java/com/tiendasebas/tiendasebas/controller/SuperAdminReporteSaasController.java",
+    "src/main/java/com/tiendasebas/tiendasebas/controller/SuperAdminSuscripcionController.java",
+    "src/main/java/com/tiendasebas/tiendasebas/service/SuscripcionService.java",
+    "src/test/java/com/tiendasebas/tiendasebas/service/SuscripcionPlanComercialTest.java"
+  ]
+}

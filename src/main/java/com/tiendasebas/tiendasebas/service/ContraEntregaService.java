@@ -100,6 +100,13 @@ public class ContraEntregaService {
                 TenantContext.getCurrentTenant());
     }
 
+    @Transactional(readOnly=true)
+    public com.tiendasebas.tiendasebas.dto.PaginaPagos<Cobro> paginaReportes(Integer cursor,int size){
+        com.tiendasebas.tiendasebas.dto.PaginaPagos.validar(cursor,size);
+        var rows=jdbc.query("SELECT c.id_venta,c.monto,c.estado,c.metodo_cobro,c.referencia_cobro,c.cobrado_en,c.creado_en,e.estado AS estado_envio FROM public.saas_cobros_contraentrega c JOIN public.saas_envios e ON e.tienda_id=c.tienda_id AND e.id_venta=c.id_venta WHERE c.tienda_id=? AND c.id_venta<? ORDER BY c.id_venta DESC LIMIT ?",(rs,n)->new Cobro(rs.getInt("id_venta"),rs.getBigDecimal("monto"),rs.getString("estado"),rs.getString("metodo_cobro"),rs.getString("referencia_cobro"),rs.getObject("cobrado_en",java.time.OffsetDateTime.class),rs.getObject("creado_en",java.time.OffsetDateTime.class),rs.getString("estado_envio")),TenantContext.getCurrentTenant(),cursor==null?2147483648L:cursor.longValue(),size+1);
+        return com.tiendasebas.tiendasebas.dto.PaginaPagos.desde(rows,size,Cobro::idVenta);
+    }
+
     @Transactional(readOnly = true)
     public EstadoCliente consultarPropio(Integer ventaId, String correo) {
         Long tienda = TenantContext.getCurrentTenant();

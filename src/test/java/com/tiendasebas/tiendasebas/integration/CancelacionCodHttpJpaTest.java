@@ -41,13 +41,9 @@ import java.util.concurrent.*;
 import static org.junit.jupiter.api.Assertions.*;
 
 /** HTTP sobre socket real, filtros reales y repositorios JPA sin sustituciones. */
-@Testcontainers
 @Timeout(60)
 class CancelacionCodHttpJpaTest {
-    @Container
-    static final PostgreSQLContainer postgres = new PostgreSQLContainer("postgres:17-alpine")
-            .withDatabaseName("cod_http_jpa").withUsername("test")
-            .withPassword(UUID.randomUUID().toString());
+    static final ComercialPostgresFixture postgres = new ComercialPostgresFixture();
     @TempDir(cleanup = CleanupMode.ALWAYS)
     static Path uploads;
 
@@ -68,7 +64,7 @@ class CancelacionCodHttpJpaTest {
     @EnableTransactionManagement
     @EnableMethodSecurity
     @EnableJpaRepositories("com.tiendasebas.tiendasebas.repository")
-    @Import({SecurityConfig.class, JwtService.class, JwtAuthenticationFilter.class,
+    @Import({SecurityConfig.class, JwtService.class, com.tiendasebas.tiendasebas.security.SesionService.class, com.tiendasebas.tiendasebas.security.AuthRateLimit.class, JwtAuthenticationFilter.class,
             TenantResolver.class, CancelacionCodController.class, CancelacionCodService.class,
             com.tiendasebas.tiendasebas.controller.DisenoTiendaPublicoController.class,
             com.tiendasebas.tiendasebas.controller.EditorTiendaController.class,
@@ -112,7 +108,7 @@ class CancelacionCodHttpJpaTest {
 
         @Bean
         DataSource dataSource() {
-            return new DriverManagerDataSource(PostgresTestSafety.verifiedUrl(postgres),
+            return new DriverManagerDataSource(postgres.verifiedUrl(),
                     postgres.getUsername(), postgres.getPassword());
         }
         @Bean
@@ -138,10 +134,11 @@ class CancelacionCodHttpJpaTest {
     static class PosErrors extends com.tiendasebas.tiendasebas.exception.GlobalExceptionHandler {}
 
     @BeforeAll
-    static void start() {
+    static void start() throws Exception {
+        postgres.start();
         PostgresTestSafety.rejectExternalConfiguration(System.getenv());
         PostgresTestSafety.rejectExternalConfiguration(System.getProperties());
-        String url = PostgresTestSafety.verifiedUrl(postgres);
+        String url = postgres.verifiedUrl();
         var application = new SpringApplication(Application.class);
         var environment = new StandardEnvironment();
         environment.getPropertySources().remove(StandardEnvironment.SYSTEM_ENVIRONMENT_PROPERTY_SOURCE_NAME);
@@ -209,8 +206,8 @@ class CancelacionCodHttpJpaTest {
     }
 
     @AfterAll
-    static void stop() {
-        if (context != null) context.close();
+    static void stop() throws Exception {
+        try { if (context != null) context.close(); } finally { postgres.close(); }
     }
 
     @BeforeEach

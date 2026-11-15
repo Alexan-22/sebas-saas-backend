@@ -162,7 +162,7 @@ public class SuperAdminPropietarioCuentaController {
                     SET
                         nombre = ?,
                         apellido = ?,
-                        correo = ?
+                        correo = ?, revision=revision+1
                     WHERE id_usuario = ?
                       AND tienda_id = ?
                     """,
@@ -181,6 +181,7 @@ public class SuperAdminPropietarioCuentaController {
                 );
             }
 
+            if(!java.util.Objects.equals(actual.correo(),correo))jdbc.update("UPDATE public.usuarios SET version_sesion=?, revision=revision+1 WHERE id_usuario=? AND tienda_id=?",java.util.UUID.randomUUID().toString(),actual.usuarioId(),tiendaId);
             actividad.registrar("ACTUALIZAR", "PROPIETARIO", actual.usuarioId(),
                     "Se actualizaron los datos de un propietario");
             return consultarCuenta(tiendaId, false);
@@ -229,11 +230,13 @@ public class SuperAdminPropietarioCuentaController {
         int actualizados = jdbc.update(
                 """
                 UPDATE public.usuarios
-                SET estado = ?
+                SET estado = ?, revision=revision+1, version_sesion = CASE WHEN ? THEN version_sesion ELSE ? END
                 WHERE id_usuario = ?
                   AND tienda_id = ?
                 """,
                 request.activo(),
+                request.activo(),
+                java.util.UUID.randomUUID().toString(),
                 actual.usuarioId(),
                 tiendaId
         );

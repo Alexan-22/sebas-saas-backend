@@ -49,6 +49,8 @@ public class SecurityConfig {
     // ========================================
 
     @Bean
+    public org.springframework.security.core.userdetails.UserDetailsService jwtOnlyUsers(){return username->{throw new org.springframework.security.core.userdetails.UsernameNotFoundException("Solo autenticacion JWT");};}
+    @Bean
     public PasswordEncoder passwordEncoder() {
         return new BCryptPasswordEncoder();
     }
@@ -100,8 +102,12 @@ public class SecurityConfig {
                                 HttpMethod.POST,
                                 "/api/auth/registro",
                                 "/api/auth/login",
-                                "/api/auth/superadmin/login"
+                                "/api/auth/superadmin/login",
+                                "/api/auth/password/forgot", "/api/auth/password/reset",
+                                "/api/auth/superadmin/password/forgot", "/api/auth/superadmin/password/reset"
                         ).permitAll()
+
+                        .requestMatchers("/api/auth/logout", "/api/auth/password/change").authenticated()
 
                         // SUPERADMIN GLOBAL
 

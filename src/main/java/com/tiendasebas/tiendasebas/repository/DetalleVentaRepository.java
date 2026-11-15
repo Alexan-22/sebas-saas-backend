@@ -25,8 +25,8 @@ public interface DetalleVentaRepository extends JpaRepository<DetalleVenta, Inte
             JOIN FETCH pt.producto p
             JOIN FETCH p.categoria c
             JOIN FETCH p.genero g
-            JOIN FETCH pt.talla t
-            WHERE v.tiendaId = :tiendaId
+            LEFT JOIN FETCH pt.talla t
+            WHERE v.tiendaId = :tiendaId AND p.tiendaId = :tiendaId AND c.tiendaId = :tiendaId
             ORDER BY dv.idDetalleVenta ASC
             """)
     List<DetalleVenta> listarTodosParaReportesPorTienda(@Param("tiendaId") Long tiendaId);

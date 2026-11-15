@@ -26,8 +26,6 @@ import org.springframework.security.core.userdetails.UserDetailsService;
 import org.springframework.security.core.userdetails.UsernameNotFoundException;
 import org.springframework.transaction.annotation.EnableTransactionManagement;
 import org.springframework.transaction.support.TransactionTemplate;
-import org.testcontainers.junit.jupiter.*;
-import org.testcontainers.postgresql.PostgreSQLContainer;
 import tools.jackson.databind.json.JsonMapper;
 import javax.sql.DataSource;
 import java.math.BigDecimal;
@@ -39,13 +37,9 @@ import java.util.concurrent.*;
 import static org.junit.jupiter.api.Assertions.*;
 
 /** HTTP, JWT, RBAC, JPA/JDBC y PostgreSQL reales. No ejecuta scripts de migración. */
-@Testcontainers
 @Timeout(60)
 class ComercialHttpPostgresTest {
-    @Container
-    static final PostgreSQLContainer postgres = new PostgreSQLContainer("postgres:17-alpine")
-            .withDatabaseName("comercial_aislado").withUsername("test")
-            .withPassword(UUID.randomUUID().toString());
+    static final ComercialPostgresFixture postgres = new ComercialPostgresFixture();
     static final String secret = UUID.randomUUID().toString() + UUID.randomUUID();
     static final HttpClient http = HttpClient.newBuilder().connectTimeout(Duration.ofSeconds(10)).build();
     static ConfigurableApplicationContext context;
@@ -61,13 +55,13 @@ class ComercialHttpPostgresTest {
     @EnableTransactionManagement
     @EnableMethodSecurity
     @EnableJpaRepositories("com.tiendasebas.tiendasebas.repository")
-    @Import({SecurityConfig.class, JwtAuthenticationFilter.class, JwtService.class, TenantResolver.class,
+    @Import({SecurityConfig.class, JwtAuthenticationFilter.class, JwtService.class, com.tiendasebas.tiendasebas.security.SesionService.class, com.tiendasebas.tiendasebas.security.AuthRateLimit.class, TenantResolver.class,
             SuperAdminPlanController.class, SuperAdminSuscripcionController.class,
             SuperAdminReporteSaasController.class, ComercialExceptionHandler.class,
             PlanComercialService.class, SuscripcionService.class, SaasActividadService.class, ReporteComercialService.class})
     static class Application {
         @Bean DataSource dataSource() {
-            return new DriverManagerDataSource(PostgresTestSafety.verifiedUrl(postgres), postgres.getUsername(), postgres.getPassword());
+            return new DriverManagerDataSource(postgres.verifiedUrl(), postgres.getUsername(), postgres.getPassword());
         }
         @Bean LocalContainerEntityManagerFactoryBean entityManagerFactory(DataSource source) {
             var factory = new LocalContainerEntityManagerFactoryBean();
@@ -85,7 +79,7 @@ class ComercialHttpPostgresTest {
     static void startContext() {
         PostgresTestSafety.rejectExternalConfiguration(System.getenv());
         PostgresTestSafety.rejectExternalConfiguration(System.getProperties());
-        String url = PostgresTestSafety.verifiedUrl(postgres);
+        String url = postgres.verifiedUrl();
         var env = new StandardEnvironment();
         env.getPropertySources().remove(StandardEnvironment.SYSTEM_ENVIRONMENT_PROPERTY_SOURCE_NAME);
         env.getPropertySources().remove(StandardEnvironment.SYSTEM_PROPERTIES_PROPERTY_SOURCE_NAME);
@@ -108,9 +102,10 @@ class ComercialHttpPostgresTest {
         esquemaCreado = true;
     }
 
-    @BeforeAll static void start() {
+    @BeforeAll static void start() throws Exception {
+        postgres.start();
         startContext();
-        // DDL exclusivo de la fixture en Testcontainers. No lee ni ejecuta archivos SQL.
+        // DDL exclusivo de la fixture en un clúster privado. No lee ni ejecuta archivos SQL.
         db.execute("CREATE TABLE planes_saas(id BIGSERIAL PRIMARY KEY, codigo varchar(50) UNIQUE NOT NULL, nombre varchar(100) NOT NULL, descripcion text, precio_mensual numeric(12,2) NOT NULL, moneda char(3) NOT NULL DEFAULT 'PEN', duracion_meses integer NOT NULL, limite_productos integer, limite_usuarios integer, limite_sucursales integer, beneficios jsonb NOT NULL DEFAULT '[]', activo boolean NOT NULL DEFAULT TRUE, creado_en timestamptz NOT NULL DEFAULT now(), actualizado_en timestamptz NOT NULL DEFAULT now())");
         db.execute("CREATE TABLE saas_configuracion(clave varchar(100) PRIMARY KEY, valor text NOT NULL, actualizado_en timestamptz NOT NULL DEFAULT now())");
         db.execute("CREATE TABLE suscripciones_saas(id BIGSERIAL PRIMARY KEY, tienda_id bigint NOT NULL REFERENCES tiendas(id), plan_id bigint NOT NULL REFERENCES planes_saas(id), estado varchar(20) NOT NULL CHECK(estado IN ('ACTIVA','PENDIENTE','VENCIDA','CANCELADA')), fecha_inicio date NOT NULL, fecha_fin date NOT NULL CHECK(fecha_fin>fecha_inicio), precio_contratado numeric(12,2) NOT NULL CHECK(precio_contratado>=0), moneda char(3) NOT NULL, creado_en timestamptz NOT NULL DEFAULT now(), actualizado_en timestamptz NOT NULL DEFAULT now())");
@@ -132,9 +127,9 @@ class ComercialHttpPostgresTest {
         u.setPasswordHash("solo-fixture-" + alias); u.setRol(rol); u.setTiendaId(tienda); em.persist(u);
         return context.getBean(JwtService.class).generateToken(u.getIdUsuario(), u.getCorreo(), roleName, tienda, u.getMaterialSesion());
     }
-    @AfterAll static void stop() { if (context != null) context.close(); }
+    @AfterAll static void stop() throws Exception { try { if (context != null) context.close(); } finally { postgres.close(); } }
     @BeforeEach void seed() {
-        PostgresTestSafety.verifiedUrl(postgres);
+        postgres.verifiedUrl();
         db.execute("ALTER TABLE saas_actividad DROP CONSTRAINT IF EXISTS rechazo_fixture");
         db.update("DELETE FROM suscripciones_saas"); db.update("DELETE FROM saas_actividad"); db.update("DELETE FROM saas_configuracion"); db.update("DELETE FROM planes_saas");
         for (int id = 1; id <= 3; id++) db.update("INSERT INTO planes_saas(id,codigo,nombre,precio_mensual,moneda,duracion_meses,activo) VALUES (?,?,?,?,?,1,?)", id, "PLAN_" + id, "Plan " + id, id == 1 ? 79 : 129, "PEN", id != 3);

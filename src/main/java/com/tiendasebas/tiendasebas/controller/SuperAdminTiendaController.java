@@ -488,6 +488,7 @@ public class SuperAdminTiendaController {
             );
         }
 
+        if (!ACTIVA.equals(nuevoEstado)) jdbcTemplate.update("UPDATE public.auth_sesiones SET revocada=true WHERE tienda_id=?",id);
         TiendaResumen tienda = resultado.get(0);
         actividad.registrar(
                 nuevoEstado.equals(ACTIVA) ? "ACTIVAR" :

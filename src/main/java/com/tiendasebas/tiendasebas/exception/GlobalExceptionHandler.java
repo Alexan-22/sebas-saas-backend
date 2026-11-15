@@ -139,10 +139,8 @@ public class GlobalExceptionHandler {
     // ==========================================
     // 6. OTROS ERRORES DE NEGOCIO
     // ==========================================
-    // Se conserva el comportamiento anterior
-    // para no alterar otros módulos existentes.
-    // Revisaremos estas excepciones por tipo
-    // durante una etapa de mejoras.
+    // Los errores no clasificados devuelven 500 sin detalles internos.
+    // Los errores esperados usan validaciones o ResponseStatusException.
 
     // RBAC: denegacion de permisos -> HTTP 403.
     @ExceptionHandler(AccessDeniedException.class)
@@ -156,6 +154,25 @@ public class GlobalExceptionHandler {
         );
     }
 
+    @ExceptionHandler(org.springframework.web.method.annotation.MethodArgumentTypeMismatchException.class)
+    public ResponseEntity<Map<String,Object>> manejarParametroInvalido(Exception ex){
+        return respuesta(HttpStatus.BAD_REQUEST,"Parametros invalidos","Revisa los parametros de la solicitud.");
+    }
+    @ExceptionHandler(org.springframework.dao.OptimisticLockingFailureException.class)
+    public ResponseEntity<Map<String,Object>> manejarCuentaConcurrente(Exception ex){
+        return respuesta(HttpStatus.CONFLICT,"La cuenta cambio","Actualiza los datos y vuelve a intentar.");
+    }
+    @ExceptionHandler(org.springframework.dao.DataIntegrityViolationException.class)
+    public ResponseEntity<Map<String,Object>> manejarConflictoDatos(Exception ex){
+        return respuesta(HttpStatus.CONFLICT,"Conflicto de datos","La operacion entra en conflicto con los datos existentes.");
+    }
+
+    @ExceptionHandler(org.springframework.dao.DataAccessException.class)
+    public ResponseEntity<Map<String,Object>> manejarBaseNoDisponible(org.springframework.dao.DataAccessException ex){
+        log.error("Acceso a datos no disponible, tipo={}",ex.getClass().getSimpleName());
+        return respuesta(HttpStatus.SERVICE_UNAVAILABLE,"Servicio no disponible","No se pudo completar la solicitud. Intenta mas tarde.");
+    }
+
     @ExceptionHandler(RuntimeException.class)
     public ResponseEntity<Map<String, Object>>
     manejarRuntimeException(
@@ -163,21 +180,11 @@ public class GlobalExceptionHandler {
     ) {
 
         log.error(
-                "Error de ejecución no clasificado",
-                exception
+                "Error de ejecucion no clasificado, tipo={}",
+                exception.getClass().getSimpleName()
         );
 
-        String mensaje = exception.getMessage();
-
-        if (mensaje == null || mensaje.isBlank()) {
-            mensaje = "No se pudo procesar la solicitud";
-        }
-
-        return respuesta(
-                HttpStatus.BAD_REQUEST,
-                "Error en la solicitud",
-                mensaje
-        );
+        return respuesta(HttpStatus.INTERNAL_SERVER_ERROR,"Error interno del servidor","No se pudo procesar la solicitud. Intenta nuevamente.");
     }
 
     // ==========================================
@@ -192,8 +199,8 @@ public class GlobalExceptionHandler {
         // No exponer trazas al navegador.
 
         log.error(
-                "Excepción inesperada en Spring Boot",
-                exception
+                "Excepcion inesperada en Spring Boot, tipo={}",
+                exception.getClass().getSimpleName()
         );
 
         return respuesta(

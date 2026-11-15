@@ -9,6 +9,17 @@ import java.util.Optional;
 
 @Repository
 public interface UsuarioRepository extends JpaRepository<Usuario, Integer> {
+    @org.springframework.data.jpa.repository.Lock(jakarta.persistence.LockModeType.PESSIMISTIC_WRITE)
+    @org.springframework.data.jpa.repository.Query("select u from Usuario u where u.idUsuario=:id")
+    Optional<Usuario> bloquearPorId(@org.springframework.data.repository.query.Param("id") Integer id);
+
+
+    @org.springframework.data.jpa.repository.Lock(jakarta.persistence.LockModeType.PESSIMISTIC_WRITE)
+    @org.springframework.data.jpa.repository.Query("select u from Usuario u where u.correo=:correo and u.tiendaId=:tienda")
+    Optional<Usuario> bloquearPorCorreoTienda(@org.springframework.data.repository.query.Param("correo") String correo,@org.springframework.data.repository.query.Param("tienda") Long tienda);
+    @org.springframework.data.jpa.repository.Lock(jakarta.persistence.LockModeType.PESSIMISTIC_WRITE)
+    @org.springframework.data.jpa.repository.Query("select u from Usuario u where u.correo=:correo and u.tiendaId is null")
+    Optional<Usuario> bloquearGlobalPorCorreo(@org.springframework.data.repository.query.Param("correo") String correo);
 
     // Método requerido por JwtAuthenticationFilter y AuthService
     Optional<Usuario> findByCorreo(String correo);
