@@ -8,6 +8,7 @@ import java.util.List;
 import java.util.Optional;
 
 @Repository
+@org.springframework.transaction.annotation.Transactional(readOnly=true)
 public interface UsuarioRepository extends JpaRepository<Usuario, Integer> {
     @org.springframework.data.jpa.repository.Lock(jakarta.persistence.LockModeType.PESSIMISTIC_WRITE)
     @org.springframework.data.jpa.repository.Query("select u from Usuario u where u.idUsuario=:id")

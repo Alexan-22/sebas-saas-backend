@@ -1,9 +1,13 @@
 package com.tiendasebas.tiendasebas.service;
 
+import com.tiendasebas.tiendasebas.config.TenantContext;
 import com.tiendasebas.tiendasebas.dto.UsuarioAdminResponse;
 import com.tiendasebas.tiendasebas.entity.Usuario;
 import com.tiendasebas.tiendasebas.repository.UsuarioRepository;
+import org.springframework.http.HttpStatus;
 import org.springframework.stereotype.Service;
+import org.springframework.web.server.ResponseStatusException;
+
 import java.util.List;
 
 @Service
@@ -15,66 +19,54 @@ public class UsuarioService {
         this.usuarioRepository = usuarioRepository;
     }
 
-    // =========================================================
-    // LISTAR TODOS LOS USUARIOS
-    // =========================================================
+    // Listar todos los usuarios
     public List<UsuarioAdminResponse> listarTodos() {
-        return usuarioRepository.findByTiendaId(tiendaActual()).stream().map(this::convertirDto).toList();
+        return usuarioRepository.findByTiendaId(tiendaActual())
+                .stream()
+                .map(this::convertirDto)
+                .toList();
     }
 
-    // =========================================================
-    // BUSCAR USUARIO POR ID
-    // =========================================================
+    // Buscar usuario por ID
     public UsuarioAdminResponse buscarPorId(Integer idUsuario) {
-        Usuario usuario = buscarEntidad(idUsuario);
-        return convertirDto(usuario);
+        return convertirDto(buscarEntidad(idUsuario));
     }
 
-    // =========================================================
-    // CAMBIAR ESTADO
-    // =========================================================
+    // Cambiar estado del usuario
     public UsuarioAdminResponse cambiarEstado(Integer idUsuario, Boolean estado) {
         if (estado == null) {
             throw new RuntimeException("El estado es obligatorio");
         }
 
         Usuario usuario = buscarEntidad(idUsuario);
-        if (!estado && Boolean.TRUE.equals(usuario.getEstado())
-                ) {
+
+        if (!estado && Boolean.TRUE.equals(usuario.getEstado())) {
             usuario.revocarSesiones();
         }
-        usuario.setEstado(estado);
 
+        usuario.setEstado(estado);
         Usuario actualizado = usuarioRepository.save(usuario);
         return convertirDto(actualizado);
     }
 
-    // =========================================================
-    // BUSCAR ENTIDAD
-    // =========================================================
+    // Buscar entidad usuario en la tienda actual
     private Usuario buscarEntidad(Integer idUsuario) {
         return usuarioRepository.findByIdUsuarioAndTiendaId(idUsuario, tiendaActual())
-                .orElseThrow(() -> new org.springframework.web.server.ResponseStatusException(
-                        org.springframework.http.HttpStatus.NOT_FOUND, "Usuario no encontrado"));
+                .orElseThrow(() -> new ResponseStatusException(HttpStatus.NOT_FOUND, "Usuario no encontrado"));
     }
 
+    // Obtener el ID de la tienda actual desde el contexto
     private Long tiendaActual() {
-        Long tienda = com.tiendasebas.tiendasebas.config.TenantContext.getCurrentTenant();
+        Long tienda = TenantContext.getCurrentTenant();
         if (tienda == null || tienda <= 0) {
-            throw new org.springframework.web.server.ResponseStatusException(org.springframework.http.HttpStatus.UNAUTHORIZED);
+            throw new ResponseStatusException(HttpStatus.UNAUTHORIZED);
         }
         return tienda;
     }
 
-    // =========================================================
-    // CONVERTIR ENTIDAD A DTO
-    // =========================================================
+    // Convertir entidad a DTO
     private UsuarioAdminResponse convertirDto(Usuario usuario) {
-        String rol = "";
-
-        if (usuario.getRol() != null) {
-            rol = usuario.getRol().getNombreRol();
-        }
+        String rol = usuario.getRol() != null ? usuario.getRol().getNombreRol() : "";
 
         return new UsuarioAdminResponse(
                 usuario.getIdUsuario(),

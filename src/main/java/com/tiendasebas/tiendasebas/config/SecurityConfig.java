@@ -1,6 +1,8 @@
 package com.tiendasebas.tiendasebas.config;
 
 import com.tiendasebas.tiendasebas.security.JwtAuthenticationFilter;
+import com.tiendasebas.tiendasebas.config.globaljdbc.GlobalJdbcAuthorizationFilter;
+import org.springframework.beans.factory.annotation.Autowired;
 import jakarta.servlet.DispatcherType;
 
 import org.springframework.beans.factory.annotation.Value;
@@ -30,6 +32,9 @@ import java.util.List;
 public class SecurityConfig {
 
     private final JwtAuthenticationFilter jwt;
+
+    @Autowired(required = false)
+    private GlobalJdbcAuthorizationFilter globalJdbcAuthorizationFilter;
 
     @Value("${app.cors.allowed-origins}")
     private String origins;
@@ -204,6 +209,9 @@ public class SecurityConfig {
                         UsernamePasswordAuthenticationFilter.class
                 );
 
+        if (globalJdbcAuthorizationFilter != null) {
+            http.addFilterAfter(globalJdbcAuthorizationFilter, JwtAuthenticationFilter.class);
+        }
         return http.build();
     }
 

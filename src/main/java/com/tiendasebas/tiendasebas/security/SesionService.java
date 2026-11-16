@@ -4,6 +4,7 @@ import org.springframework.jdbc.core.JdbcTemplate;
 import org.springframework.stereotype.Service;
 import java.util.UUID;
 @Service
+@org.springframework.transaction.annotation.Transactional
 public class SesionService {
  private final JdbcTemplate jdbc;
  private final long idleSeconds,absoluteSeconds;

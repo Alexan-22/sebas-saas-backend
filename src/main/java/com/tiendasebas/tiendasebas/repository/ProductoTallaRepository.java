@@ -31,15 +31,7 @@ public interface ProductoTallaRepository extends JpaRepository<ProductoTalla, In
     // MÃ©todos Multi-tenant (ya agregados previamente)
     List<ProductoTalla> findByProductoIdProductoAndProductoTiendaId(Integer idProducto, Long tiendaId);
 
-    @Lock(LockModeType.PESSIMISTIC_WRITE)
-    @Query("""
-            SELECT pt
-            FROM ProductoTalla pt
-            JOIN FETCH pt.producto p
-            LEFT JOIN FETCH pt.talla
-            WHERE pt.idProductoTalla = :idProductoTalla
-              AND p.tiendaId = :tiendaId
-            """)
+    @Query(value="SELECT pt.* FROM producto_tallas pt JOIN productos p ON p.id_producto=pt.id_producto WHERE pt.id_producto_talla=:idProductoTalla AND p.tienda_id=:tiendaId FOR UPDATE OF pt",nativeQuery=true)
     Optional<ProductoTalla> buscarPorIdParaCompra(@Param("idProductoTalla") Integer idProductoTalla, @Param("tiendaId") Long tiendaId);
 
     @Lock(LockModeType.PESSIMISTIC_WRITE)

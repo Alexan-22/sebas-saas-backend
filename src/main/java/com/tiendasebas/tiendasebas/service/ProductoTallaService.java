@@ -44,6 +44,7 @@ public class ProductoTallaService {
     // =========================================================
     // ADMIN - INVENTARIO COMPLETO PARA REPORTES
     // =========================================================
+    @Transactional(readOnly = true)
     public List<ProductoTalla> listarInventarioCompleto() {
         return productoTallaRepository.listarInventarioCompletoPorTienda(TenantContext.getCurrentTenant());
     }

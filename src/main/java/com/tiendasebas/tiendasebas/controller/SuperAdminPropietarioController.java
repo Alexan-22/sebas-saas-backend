@@ -6,6 +6,7 @@ import com.tiendasebas.tiendasebas.entity.Usuario;
 import com.tiendasebas.tiendasebas.repository.RolRepository;
 import com.tiendasebas.tiendasebas.repository.UsuarioRepository;
 
+import org.springframework.beans.factory.annotation.Value;
 import org.springframework.dao.DataIntegrityViolationException;
 import org.springframework.http.HttpStatus;
 import org.springframework.jdbc.core.JdbcTemplate;
@@ -39,6 +40,9 @@ public class SuperAdminPropietarioController {
     // ========================================
     // DEPENDENCIAS
     // ========================================
+
+    @Value("${app.rls.superadmin-enabled:false}")
+    private boolean globalJdbcEnabled;
 
     private final JdbcTemplate jdbc;
     private final UsuarioRepository usuarios;
@@ -306,15 +310,22 @@ public class SuperAdminPropietarioController {
         // CORREO GLOBALMENTE UNICO
         // ====================================
 
-        Long correosExistentes = jdbc.queryForObject(
-                """
-                SELECT COUNT(*)
-                FROM public.usuarios
-                WHERE LOWER(correo) = ?
-                """,
-                Long.class,
-                correo
-        );
+        Long correosExistentes;
+        if (globalJdbcEnabled) {
+            Boolean registrado = jdbc.queryForObject(
+                    "SELECT public.global_correo_registrado(?)", Boolean.class, correo);
+            correosExistentes = Boolean.TRUE.equals(registrado) ? 1L : 0L;
+        } else {
+            correosExistentes = jdbc.queryForObject(
+                    """
+                    SELECT COUNT(*)
+                    FROM public.usuarios
+                    WHERE LOWER(correo) = ?
+                    """,
+                    Long.class,
+                    correo
+            );
+        }
 
         if (
                 correosExistentes != null &&

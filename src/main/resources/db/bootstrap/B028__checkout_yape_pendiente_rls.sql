@@ -1,0 +1,22 @@
+-- Opt-in: checkout ONLINE Yape pendiente, sin confirmación ni devolución financiera.
+BEGIN;
+ALTER TABLE direcciones_envio ALTER COLUMN tienda_id SET DEFAULT nullif(current_setting('app.tenant_id',true),'')::bigint;
+GRANT INSERT ON direcciones_envio,detalle_venta,yape_pagos_manuales,yape_pagos_auditoria,yape_checkout_reintentos TO sebas_auth_app;
+GRANT INSERT,UPDATE ON ventas TO sebas_auth_app;
+GRANT SELECT ON tiendas,yape_configuracion_tienda,yape_qr_imagen,yape_pagos_manuales,yape_checkout_reintentos TO sebas_auth_app;
+GRANT USAGE ON SEQUENCE ventas_id_venta_seq,direcciones_envio_id_seq,detalle_venta_id_detalle_venta_seq,yape_pagos_manuales_id_seq,yape_pagos_auditoria_id_seq TO sebas_auth_app;
+CREATE POLICY checkout_tienda_lectura ON tiendas FOR SELECT TO sebas_auth_app USING(id=nullif(current_setting('app.tenant_id',true),'')::bigint);
+CREATE POLICY checkout_direccion_alta ON direcciones_envio FOR INSERT TO sebas_auth_app WITH CHECK(tienda_id=nullif(current_setting('app.tenant_id',true),'')::bigint);
+CREATE POLICY checkout_venta_alta ON ventas FOR INSERT TO sebas_auth_app WITH CHECK(tienda_id=nullif(current_setting('app.tenant_id',true),'')::bigint AND tipo_venta='ONLINE' AND medio_pago='YAPE' AND estado='PAGO_PENDIENTE' AND EXISTS(SELECT 1 FROM usuarios u WHERE u.id_usuario=ventas.id_usuario AND u.tienda_id=ventas.tienda_id));
+CREATE POLICY checkout_venta_actualizar ON ventas FOR UPDATE TO sebas_auth_app USING(tienda_id=nullif(current_setting('app.tenant_id',true),'')::bigint AND estado='PAGO_PENDIENTE' AND medio_pago='YAPE') WITH CHECK(tienda_id=nullif(current_setting('app.tenant_id',true),'')::bigint AND estado='PAGO_PENDIENTE' AND tipo_venta='ONLINE' AND medio_pago='YAPE');
+CREATE POLICY checkout_detalle_alta ON detalle_venta FOR INSERT TO sebas_auth_app WITH CHECK(EXISTS(SELECT 1 FROM ventas v WHERE v.id_venta=detalle_venta.id_venta AND v.estado='PAGO_PENDIENTE' AND v.medio_pago='YAPE') AND EXISTS(SELECT 1 FROM producto_tallas pt WHERE pt.id_producto_talla=detalle_venta.id_producto_talla));
+CREATE POLICY checkout_yape_configuracion_tienda_leer ON yape_configuracion_tienda FOR SELECT TO sebas_auth_app USING(tienda_id=nullif(current_setting('app.tenant_id',true),'')::bigint);
+CREATE POLICY checkout_yape_qr_imagen_leer ON yape_qr_imagen FOR SELECT TO sebas_auth_app USING(tienda_id=nullif(current_setting('app.tenant_id',true),'')::bigint);
+CREATE POLICY checkout_yape_checkout_reintentos_leer ON yape_checkout_reintentos FOR SELECT TO sebas_auth_app USING(tienda_id=nullif(current_setting('app.tenant_id',true),'')::bigint);
+CREATE POLICY checkout_yape_pagos_manuales_leer ON yape_pagos_manuales FOR SELECT TO sebas_auth_app USING(tienda_id=nullif(current_setting('app.tenant_id',true),'')::bigint);
+CREATE POLICY checkout_yape_alta ON yape_pagos_manuales FOR INSERT TO sebas_auth_app WITH CHECK(tienda_id=nullif(current_setting('app.tenant_id',true),'')::bigint AND estado='PENDIENTE' AND verificado_en IS NULL AND verificado_por IS NULL AND EXISTS(SELECT 1 FROM ventas v WHERE v.id_venta=yape_pagos_manuales.id_venta AND v.tienda_id=yape_pagos_manuales.tienda_id AND v.id_usuario=yape_pagos_manuales.usuario_id AND v.estado='PAGO_PENDIENTE' AND v.medio_pago='YAPE'));
+CREATE POLICY checkout_yape_evento_alta ON yape_pagos_auditoria FOR INSERT TO sebas_auth_app WITH CHECK(tienda_id=nullif(current_setting('app.tenant_id',true),'')::bigint AND evento='CREADO' AND estado_nuevo='PENDIENTE' AND EXISTS(SELECT 1 FROM yape_pagos_manuales p WHERE p.id=pago_id AND p.id_venta=yape_pagos_auditoria.id_venta AND p.tienda_id=yape_pagos_auditoria.tienda_id));
+CREATE POLICY checkout_yape_reintento_alta ON yape_checkout_reintentos FOR INSERT TO sebas_auth_app WITH CHECK(tienda_id=nullif(current_setting('app.tenant_id',true),'')::bigint AND EXISTS(SELECT 1 FROM yape_pagos_manuales p WHERE p.id_venta=yape_checkout_reintentos.id_venta AND p.tienda_id=yape_checkout_reintentos.tienda_id AND p.usuario_id=yape_checkout_reintentos.usuario_id));
+ALTER TABLE yape_pagos_manuales ADD CONSTRAINT checkout_yape_usuario_tenant_fk FOREIGN KEY(tienda_id,usuario_id) REFERENCES usuarios(tienda_id,id_usuario);
+ALTER TABLE yape_checkout_reintentos ADD CONSTRAINT checkout_reintento_usuario_tenant_fk FOREIGN KEY(tienda_id,usuario_id) REFERENCES usuarios(tienda_id,id_usuario);
+COMMIT;

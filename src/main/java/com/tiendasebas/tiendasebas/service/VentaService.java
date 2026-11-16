@@ -217,10 +217,10 @@ public class VentaService {
         }
         Integer stockActual = productoTalla.getStock();
         if (stockActual == null || stockActual <= 0) {
-            throw new CompraException("Sin stock disponible para: " + producto.getNombre() + " - talla " + productoTalla.getTalla().getNombreTalla());
+            throw new CompraException("Sin stock disponible para: " + producto.getNombre());
         }
         if (stockActual < cantidad) {
-            throw new CompraException("Stock insuficiente para: " + producto.getNombre() + " - talla " + productoTalla.getTalla().getNombreTalla() + ". Disponible: " + stockActual);
+            throw new CompraException("Stock insuficiente para: " + producto.getNombre() + ". Disponible: " + stockActual);
         }
 
         BigDecimal precio = obtenerPrecioVenta(producto);
