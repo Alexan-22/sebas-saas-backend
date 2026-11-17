@@ -24,7 +24,6 @@ class BootstrapHttpAuthRlsTest {
   @Bean javax.sql.DataSource dataSource(){return source;}
   @Bean org.springframework.jdbc.core.JdbcTemplate jdbcTemplate(){return new org.springframework.jdbc.core.JdbcTemplate(source);}
   @Bean org.springframework.orm.jpa.LocalContainerEntityManagerFactoryBean entityManagerFactory(){var f=new org.springframework.orm.jpa.LocalContainerEntityManagerFactoryBean();f.setDataSource(source);f.setPackagesToScan("com.tiendasebas.tiendasebas.entity");f.setJpaVendorAdapter(new org.springframework.orm.jpa.vendor.HibernateJpaVendorAdapter());f.setJpaPropertyMap(Map.of("hibernate.hbm2ddl.auto","validate","hibernate.physical_naming_strategy","org.hibernate.boot.model.naming.CamelCaseToUnderscoresNamingStrategy"));return f;}
-  @Bean com.tiendasebas.tiendasebas.config.TenantJpaTransactionManager transactionManager(jakarta.persistence.EntityManagerFactory f){return new com.tiendasebas.tiendasebas.config.TenantJpaTransactionManager(f,source);}
   @Bean CatalogoRlsLocalService servicio(org.springframework.jdbc.core.JdbcTemplate db){return new CatalogoRlsLocalService(db);}
  }
  @Test void loginRealPoolRollbackYConcurrencia()throws Exception{
