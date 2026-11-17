@@ -8,23 +8,30 @@ import jakarta.servlet.http.HttpServletRequest;
 
 import org.springframework.beans.factory.annotation.Value;
 import org.springframework.stereotype.Component;
+import org.springframework.jdbc.core.JdbcTemplate;
 
 import java.util.Locale;
 import java.util.Optional;
 
-// ============================================
+
 // SEBAS COLLECTION SAAS V2
 // RESOLUCION Y ESTADO DE TIENDAS
-// ============================================
+
 
 @Component
 public class TenantResolver {
 
-    // ========================================
     // DEPENDENCIAS
-    // ========================================
+
 
     private final TiendaRepository tiendas;
+    private final JdbcTemplate jdbc;
+
+    @Value("${app.tenant.custom-domains-enabled:false}")
+    private boolean customDomainsEnabled;
+
+    @Value("${app.rls.auth-enabled:false}")
+    private boolean rlsAuthEnabled;
 
     // Dominio principal de la plataforma.
     // Ejemplo: plataforma.com
@@ -37,25 +44,23 @@ public class TenantResolver {
     @Value("${app.tenant.local-subdomain:sebascollection}")
     private String localSubdomain;
 
-    // ========================================
     // ESTADO PERMITIDO
-    // ========================================
+
 
     private static final String ESTADO_ACTIVA = "ACTIVA";
 
-    // ========================================
     // CONSTRUCTOR
-    // ========================================
 
     public TenantResolver(
-            TiendaRepository tiendas
+            TiendaRepository tiendas, JdbcTemplate jdbc
     ) {
         this.tiendas = tiendas;
+        this.jdbc = jdbc;
     }
 
-    // ========================================
+
     // RESOLVER TIENDA
-    // ========================================
+
 
     public Optional<Long> resolver(
             HttpServletRequest request
@@ -67,23 +72,42 @@ public class TenantResolver {
                 .getServerName()
                 .toLowerCase(Locale.ROOT);
 
+        if (rlsAuthEnabled) {
+            // No leer Forwarded/X-Forwarded-Host del navegador. Requiere estrategia de forwarding NONE.
+            if (host.length()>253 || !host.matches("[a-z0-9](?:[a-z0-9.-]*[a-z0-9])?")) return Optional.empty();
+            return Optional.ofNullable(jdbc.queryForObject("SELECT public.auth_resolver_host(?,?,?)",Long.class,host,baseDomain.trim().toLowerCase(Locale.ROOT),customDomainsEnabled));
+        }
+
         String subdominio;
 
-        // ====================================
         // ENTORNO LOCAL
-        // ====================================
+
 
         if (
                 host.equals("localhost") ||
-                        host.equals("127.0.0.1") ||
-                        host.equals("::1")
+                host.equals("127.0.0.1") ||
+                host.equals("::1")
         ) {
 
-            // Conservar el comportamiento actual:
-            // localhost corresponde a la tienda
-            // definida por localSubdomain.
-
+            // Compatibilidad con la configuracion actual.
             subdominio = localSubdomain;
+
+        } else if (host.endsWith(".localhost")) {
+
+            // Desarrollo: un solo servidor para varias tiendas.
+            String prefijoLocal = host.substring(
+                    0,
+                    host.length() - ".localhost".length()
+            );
+
+            // Solo un subdominio sencillo y valido.
+            if (!prefijoLocal.matches(
+                    "[a-z0-9](?:[a-z0-9-]{0,48}[a-z0-9])?"
+            )) {
+                return Optional.empty();
+            }
+
+            subdominio = prefijoLocal;
 
         } else {
 
@@ -102,7 +126,7 @@ public class TenantResolver {
                     base.isEmpty() ||
                             !host.endsWith("." + base)
             ) {
-                return Optional.empty();
+                return resolverDominioPersonalizado(host);
             }
 
             // Extraer el subdominio.
@@ -122,9 +146,8 @@ public class TenantResolver {
             subdominio = prefijo;
         }
 
-        // ====================================
+
         // CONSULTAR TIENDA EN SUPABASE
-        // ====================================
 
         Optional<Tienda> tiendaEncontrada =
                 tiendas.findBySubdominio(
@@ -139,9 +162,9 @@ public class TenantResolver {
 
         Tienda tienda = tiendaEncontrada.get();
 
-        // ====================================
+
         // VERIFICAR ESTADO REAL
-        // ====================================
+
 
         // Solo una tienda ACTIVA puede
         // continuar hacia sus endpoints
@@ -154,12 +177,25 @@ public class TenantResolver {
             return Optional.empty();
         }
 
-        // ====================================
-        // TIENDA AUTORIZADA
-        // ====================================
 
-        return Optional.ofNullable(
-                tienda.getId()
-        );
+        // TIENDA AUTORIZADA
+
+        return Optional.ofNullable(tienda.getId());
+    }
+
+    private Optional<Long> resolverDominioPersonalizado(String host) {
+        if (!customDomainsEnabled || host.length() > 253
+                || !host.matches("(?:[a-z0-9](?:[a-z0-9-]{0,61}[a-z0-9])?\\.)+[a-z0-9](?:[a-z0-9-]{0,61}[a-z0-9])?")) {
+            return Optional.empty();
+        }
+
+        var coincidencias = jdbc.queryForList("""
+                SELECT d.tienda_id FROM public.dominios_saas d
+                JOIN public.tiendas t ON t.id = d.tienda_id
+                WHERE d.dominio = ? AND d.estado = 'VERIFICADO_DNS'
+                  AND d.verificado_en IS NOT NULL AND t.estado = 'ACTIVA'
+                LIMIT 2
+                """, Long.class, host);
+        return coincidencias.size() == 1 ? Optional.of(coincidencias.getFirst()) : Optional.empty();
     }
 }

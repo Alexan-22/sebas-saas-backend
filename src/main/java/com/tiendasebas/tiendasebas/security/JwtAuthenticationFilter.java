@@ -43,6 +43,7 @@ public class JwtAuthenticationFilter
     private final UsuarioRepository usuarios;
 
     private final TenantResolver resolver;
+    private final AuthRateLimit limites;
 
     // ========================================
     // CONSTRUCTOR
@@ -51,11 +52,12 @@ public class JwtAuthenticationFilter
     public JwtAuthenticationFilter(
             JwtService jwt,
             UsuarioRepository usuarios,
-            TenantResolver resolver
+            TenantResolver resolver, AuthRateLimit limites
     ) {
         this.jwt = jwt;
         this.usuarios = usuarios;
         this.resolver = resolver;
+        this.limites = limites;
     }
 
     // ========================================
@@ -72,6 +74,11 @@ public class JwtAuthenticationFilter
         try {
 
             String ruta = request.getServletPath();
+            if(ruta.startsWith("/api/auth/")||ruta.startsWith("/api/superadmin")||ruta.contains("/admin")||request.getHeader("Authorization")!=null)response.setHeader("Cache-Control","no-store");
+            if (java.util.Set.of("POST","PUT","PATCH").contains(request.getMethod()) && (ruta.startsWith("/api/auth/") || ruta.startsWith("/api/superadmin/auth/") || ruta.equals("/api/perfil/contrasena"))) {
+                try { limites.comprobar("ip:"+ruta,request.getRemoteAddr(),60); }
+                catch (org.springframework.web.server.ResponseStatusException ex) { response.setHeader("Retry-After","600"); response.sendError(429,"Demasiados intentos"); return; }
+            }
 
             // =================================
             // SOLICITUDES CORS PREFLIGHT
@@ -92,7 +99,7 @@ public class JwtAuthenticationFilter
             // El endpoint realiza su propia
             // autenticacion con credenciales.
 
-            if ("/api/auth/superadmin/login".equals(ruta)) {
+            if (java.util.Set.of("/api/auth/superadmin/login","/api/auth/superadmin/password/forgot","/api/auth/superadmin/password/reset").contains(ruta)) {
 
                 chain.doFilter(request, response);
                 return;
@@ -130,6 +137,30 @@ public class JwtAuthenticationFilter
                     chain
             );
 
+        } catch (org.springframework.dao.DataAccessException ex) {
+
+            Throwable causa = ex.getMostSpecificCause();
+
+            String estadoSql = causa instanceof java.sql.SQLException sql
+                    ? sql.getSQLState()
+                    : "NO_SQL_STATE";
+
+            org.slf4j.LoggerFactory
+                    .getLogger(JwtAuthenticationFilter.class)
+                    .error(
+                            "AUTH_DB_FAILURE ruta={} causa={} sqlState={} detalle={}",
+                            request.getServletPath(),
+                            causa.getClass().getSimpleName(),
+                            estadoSql,
+                            causa.getMessage()
+                    );
+
+            if (!response.isCommitted()) {
+                response.sendError(
+                        503,
+                        "Servicio de autenticacion no disponible"
+                );
+            }
         } finally {
 
             // Impedir que el contexto de una
@@ -295,10 +326,23 @@ public class JwtAuthenticationFilter
         }
 
         // ====================================
+        // REVOCACION POR CAMBIO DE CREDENCIALES
+        // ====================================
+
+        String versionToken = claims.get("cv", String.class);
+        if (!jwt.credencialesVigentes(versionToken, usuario.getMaterialSesion())) {
+            response.sendError(
+                    HttpServletResponse.SC_UNAUTHORIZED,
+                    "Token revocado: se requiere iniciar sesion nuevamente"
+            );
+            return;
+        }
+
+        // ====================================
         // AUTENTICACION AUTORIZADA
         // ====================================
 
-        establecerAutenticacion(usuario);
+        if (!establecerAutenticacion(usuario,claims,response)) return;
 
         chain.doFilter(request, response);
     }
@@ -351,6 +395,9 @@ public class JwtAuthenticationFilter
         // LEER HEADER DE AUTORIZACION
         // ====================================
 
+        if ("POST".equals(request.getMethod()) && java.util.Set.of("/api/auth/login","/api/auth/registro","/api/auth/password/forgot","/api/auth/password/reset").contains(request.getServletPath())) {
+            chain.doFilter(request,response); return;
+        }
         String authorization =
                 request.getHeader("Authorization");
 
@@ -522,10 +569,23 @@ public class JwtAuthenticationFilter
         }
 
         // ====================================
+        // REVOCACION POR CAMBIO DE CREDENCIALES
+        // ====================================
+
+        String versionToken = claims.get("cv", String.class);
+        if (!jwt.credencialesVigentes(versionToken, usuario.getMaterialSesion())) {
+            response.sendError(
+                    HttpServletResponse.SC_UNAUTHORIZED,
+                    "Token revocado: se requiere iniciar sesion nuevamente"
+            );
+            return;
+        }
+
+        // ====================================
         // AUTENTICACION AUTORIZADA
         // ====================================
 
-        establecerAutenticacion(usuario);
+        if (!establecerAutenticacion(usuario,claims,response)) return;
 
         chain.doFilter(request, response);
     }
@@ -596,9 +656,8 @@ public class JwtAuthenticationFilter
     // REGISTRAR AUTENTICACION EN SPRING
     // ========================================
 
-    private void establecerAutenticacion(
-            Usuario usuario
-    ) {
+    private boolean establecerAutenticacion(Usuario usuario, Claims claims, HttpServletResponse response) throws IOException {
+        if (!jwt.sesionVigente(claims,usuario)) { response.sendError(401,"Sesion vencida o revocada"); return false; }
 
         String autoridad =
                 "ROLE_" +
@@ -618,5 +677,6 @@ public class JwtAuthenticationFilter
         SecurityContextHolder
                 .getContext()
                 .setAuthentication(autenticacion);
+        return true;
     }
 }

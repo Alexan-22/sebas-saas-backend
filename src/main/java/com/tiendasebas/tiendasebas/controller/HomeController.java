@@ -124,8 +124,7 @@ public class HomeController {
     // =========================================================
     @DeleteMapping("/admin/banners/{idBanner}")
     public ResponseEntity<Void> eliminarBanner(@PathVariable Integer idBanner) {
-        HomeBanner banner = homeService.eliminarBanner(idBanner);
-        eliminarImagenSiExiste(banner.getImagen());
+        homeService.eliminarBanner(idBanner);
         return ResponseEntity.noContent().build();
     }
 
@@ -167,12 +166,7 @@ public class HomeController {
     @PostMapping(value = "/admin/colecciones/{idColeccion}/imagen", consumes = "multipart/form-data")
     public ResponseEntity<HomeColeccion> subirImagenColeccion(@PathVariable Integer idColeccion, @RequestParam("imagen") MultipartFile imagen) {
 
-        /*
-         * Recuperamos la colección antes de cambiar
-         * la imagen para poder eliminar la anterior.
-         */
-        HomeColeccion coleccionActual = homeService.buscarColeccion(idColeccion);
-        String imagenAnterior = coleccionActual.getImagen();
+        homeService.buscarColeccion(idColeccion);
 
         /*
          * Guardamos físicamente la nueva imagen.
@@ -184,15 +178,6 @@ public class HomeController {
              * Actualizamos PostgreSQL.
              */
             HomeColeccion coleccionActualizada = homeService.actualizarImagenColeccion(idColeccion, nuevaImagen);
-
-            /*
-             * Solamente después de actualizar
-             * correctamente la base de datos
-             * eliminamos la imagen anterior.
-             */
-            if (imagenAnterior != null && !imagenAnterior.isBlank() && !imagenAnterior.equals(nuevaImagen)) {
-                homeImagenService.eliminar(imagenAnterior);
-            }
 
             return ResponseEntity.ok(coleccionActualizada);
 
@@ -213,8 +198,7 @@ public class HomeController {
     // =========================================================
     @DeleteMapping("/admin/colecciones/{idColeccion}")
     public ResponseEntity<Void> eliminarColeccion(@PathVariable Integer idColeccion) {
-        HomeColeccion coleccion = homeService.eliminarColeccion(idColeccion);
-        eliminarImagenSiExiste(coleccion.getImagen());
+        homeService.eliminarColeccion(idColeccion);
         return ResponseEntity.noContent().build();
     }
 
@@ -232,8 +216,7 @@ public class HomeController {
          * Ya no utilizamos obtenerBannerAdmin(),
          * porque ahora pueden existir muchos banners.
          */
-        HomeBanner bannerActual = homeService.buscarBanner(idBanner);
-        String imagenAnterior = bannerActual.getImagen();
+        homeService.buscarBanner(idBanner);
 
         /*
          * Guardamos físicamente la nueva imagen.
@@ -245,14 +228,6 @@ public class HomeController {
              * Actualizamos PostgreSQL.
              */
             HomeBanner bannerActualizado = homeService.actualizarImagenBanner(idBanner, nuevaImagen);
-
-            /*
-             * Cuando PostgreSQL ya fue actualizado,
-             * eliminamos la imagen anterior.
-             */
-            if (imagenAnterior != null && !imagenAnterior.isBlank() && !imagenAnterior.equals(nuevaImagen)) {
-                homeImagenService.eliminar(imagenAnterior);
-            }
 
             return ResponseEntity.ok(bannerActualizado);
 
@@ -267,11 +242,4 @@ public class HomeController {
         }
     }
 
-    // =========================================================
-    // MÉTODO INTERNO - ELIMINAR IMAGEN
-    // =========================================================
-    private void eliminarImagenSiExiste(String imagen) {
-        if (imagen == null || imagen.isBlank()) return;
-        homeImagenService.eliminar(imagen);
-    }
 }

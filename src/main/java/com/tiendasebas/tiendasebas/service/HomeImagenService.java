@@ -64,6 +64,16 @@ public class HomeImagenService {
     // =========================================================
     // GUARDAR ARCHIVO
     // =========================================================
+    public String guardarParaEditor(MultipartFile archivo, long tienda) {
+        try {
+            validarArchivo(archivo);
+        } catch (RuntimeException ex) {
+            throw new org.springframework.web.server.ResponseStatusException(
+                    org.springframework.http.HttpStatus.BAD_REQUEST, ex.getMessage(), ex);
+        }
+        return guardar(archivo, "home/editor/" + tienda);
+    }
+
     private String guardar(MultipartFile archivo, String subcarpeta) {
         validarArchivo(archivo);
 

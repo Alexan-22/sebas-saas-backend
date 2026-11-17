@@ -19,7 +19,7 @@ public class SuperAdminAuthController {
 
     @PostMapping("/login")
     public ResponseEntity<LoginResponse> login(
-            @RequestBody LoginRequest request
+            @jakarta.validation.Valid @RequestBody LoginRequest request
     ) {
         LoginResponse response =
                 authService.loginSuperAdmin(request);

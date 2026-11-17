@@ -72,4 +72,7 @@ public class YapePagosController {
         return ResponseEntity.ok().cacheControl(CacheControl.noStore())
                 .body(pagos.decidir(idVenta, auth.getName(), false, req.motivo()));
     }
+    @GetMapping("/admin/reportes")
+    @org.springframework.security.access.prepost.PreAuthorize("hasRole('ADMIN')")
+    public com.tiendasebas.tiendasebas.dto.PaginaPagos<com.tiendasebas.tiendasebas.yape.PagoYapeManualService.EstadoPago> paginaReportes(@RequestParam(required=false) Integer cursor,@RequestParam(defaultValue="100") int size){return pagos.paginaReportes(cursor,size);}
 }

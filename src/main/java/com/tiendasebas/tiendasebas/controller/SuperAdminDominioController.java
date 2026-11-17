@@ -110,13 +110,16 @@ public class SuperAdminDominioController {
                     "No se encontró el registro TXT de verificación.");
         }
 
-        jdbc.update("""
+        int actualizados = jdbc.update("""
             UPDATE public.dominios_saas
             SET estado = 'VERIFICADO_DNS',
                 verificado_en = NOW(),
                 actualizado_en = NOW()
-            WHERE id = ?
-        """, id);
+            WHERE id = ? AND dominio = ? AND token_verificacion = ?
+        """, id, nombre, token);
+        if (actualizados != 1) {
+            throw new ResponseStatusException(HttpStatus.CONFLICT, "El dominio cambió durante la verificación");
+        }
 
         return buscar(id);
     }

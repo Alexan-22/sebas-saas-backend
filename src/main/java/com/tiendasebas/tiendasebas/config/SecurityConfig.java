@@ -1,6 +1,8 @@
 package com.tiendasebas.tiendasebas.config;
 
 import com.tiendasebas.tiendasebas.security.JwtAuthenticationFilter;
+import com.tiendasebas.tiendasebas.config.globaljdbc.GlobalJdbcAuthorizationFilter;
+import org.springframework.beans.factory.annotation.Autowired;
 import jakarta.servlet.DispatcherType;
 
 import org.springframework.beans.factory.annotation.Value;
@@ -31,6 +33,9 @@ public class SecurityConfig {
 
     private final JwtAuthenticationFilter jwt;
 
+    @Autowired(required = false)
+    private GlobalJdbcAuthorizationFilter globalJdbcAuthorizationFilter;
+
     @Value("${app.cors.allowed-origins}")
     private String origins;
 
@@ -48,6 +53,8 @@ public class SecurityConfig {
     // PASSWORD ENCODER
     // ========================================
 
+    @Bean
+    public org.springframework.security.core.userdetails.UserDetailsService jwtOnlyUsers(){return username->{throw new org.springframework.security.core.userdetails.UsernameNotFoundException("Solo autenticacion JWT");};}
     @Bean
     public PasswordEncoder passwordEncoder() {
         return new BCryptPasswordEncoder();
@@ -100,8 +107,12 @@ public class SecurityConfig {
                                 HttpMethod.POST,
                                 "/api/auth/registro",
                                 "/api/auth/login",
-                                "/api/auth/superadmin/login"
+                                "/api/auth/superadmin/login",
+                                "/api/auth/password/forgot", "/api/auth/password/reset",
+                                "/api/auth/superadmin/password/forgot", "/api/auth/superadmin/password/reset"
                         ).permitAll()
+
+                        .requestMatchers("/api/auth/logout", "/api/auth/password/change").authenticated()
 
                         // SUPERADMIN GLOBAL
 
@@ -125,6 +136,8 @@ public class SecurityConfig {
                                 "/api/transferencias/publico",
                                 "/api/v1/tiendas/config",
                                 "/api/v1/tiendas/cabecera",
+                                "/api/v1/tiendas/variantes/producto/**",
+                                "/api/v1/tiendas/footer",
                                 "/api/productos/public/**",
                                 "/api/producto-tallas/producto/**",
                                 "/api/producto-imagenes/producto/**",
@@ -196,6 +209,9 @@ public class SecurityConfig {
                         UsernamePasswordAuthenticationFilter.class
                 );
 
+        if (globalJdbcAuthorizationFilter != null) {
+            http.addFilterAfter(globalJdbcAuthorizationFilter, JwtAuthenticationFilter.class);
+        }
         return http.build();
     }
 

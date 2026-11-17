@@ -21,6 +21,8 @@ import java.util.UUID;
 
 @Service
 public class ProductoImagenService {
+    @org.springframework.beans.factory.annotation.Autowired
+    private org.springframework.jdbc.core.JdbcTemplate jdbcVisibilidadImagenes;
 
     private final ProductoImagenRepository productoImagenRepository;
     private final ProductoRepository productoRepository;
@@ -52,7 +54,15 @@ public class ProductoImagenService {
         if (!Boolean.TRUE.equals(producto.getEstado())) {
             throw new ResponseStatusException(HttpStatus.NOT_FOUND, "Producto no disponible");
         }
-        return productoImagenRepository.findByProductoIdProductoAndProductoTiendaIdOrderByOrdenAsc(idProducto, tiendaId);
+        return productoImagenRepository.findByProductoIdProductoAndProductoTiendaIdOrderByOrdenAsc(idProducto, tiendaId)
+            .stream().filter(imagen -> {
+                if (imagen.getIdColor() == null) return true;
+                Integer oculto = jdbcVisibilidadImagenes.queryForObject("""
+                    SELECT COUNT(*) FROM public.saas_producto_colores_ocultos
+                    WHERE tienda_id=? AND id_producto=? AND id_color=?
+                    """, Integer.class, tiendaId, idProducto, imagen.getIdColor());
+                return oculto == null || oculto == 0;
+            }).toList();
     }
 
 

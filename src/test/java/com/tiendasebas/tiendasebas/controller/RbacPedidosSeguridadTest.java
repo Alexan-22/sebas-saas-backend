@@ -34,6 +34,13 @@ class RbacPedidosSeguridadTest {
     static class Configuracion {
 
         @Bean
+        org.springframework.jdbc.core.JdbcTemplate jdbcTemplate() {
+            return org.mockito.Mockito.mock(
+                    org.springframework.jdbc.core.JdbcTemplate.class
+            );
+        }
+
+        @Bean
         VentaService ventaService() {
             return mock(VentaService.class);
         }

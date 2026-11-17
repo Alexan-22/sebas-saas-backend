@@ -4,207 +4,177 @@ import com.tiendasebas.tiendasebas.config.TenantContext;
 import com.tiendasebas.tiendasebas.dto.LoginRequest;
 import com.tiendasebas.tiendasebas.dto.LoginResponse;
 import com.tiendasebas.tiendasebas.dto.RegistroRequest;
-import com.tiendasebas.tiendasebas.entity.Rol;
 import com.tiendasebas.tiendasebas.entity.Usuario;
 import com.tiendasebas.tiendasebas.repository.RolRepository;
 import com.tiendasebas.tiendasebas.repository.UsuarioRepository;
+import com.tiendasebas.tiendasebas.security.AuthRateLimit;
 import com.tiendasebas.tiendasebas.security.JwtService;
-
+import com.tiendasebas.tiendasebas.security.PasswordPolicy;
+import org.springframework.dao.DataIntegrityViolationException;
 import org.springframework.http.HttpStatus;
 import org.springframework.security.crypto.password.PasswordEncoder;
 import org.springframework.stereotype.Service;
+import org.springframework.transaction.PlatformTransactionManager;
+import org.springframework.transaction.support.TransactionTemplate;
 import org.springframework.web.server.ResponseStatusException;
 
+import java.sql.SQLException;
 import java.util.Locale;
+import java.util.Objects;
+import java.util.Optional;
+import java.util.Set;
+import java.util.UUID;
 
 @Service
 public class AuthService {
 
-    private final UsuarioRepository usuarioRepository;
-    private final RolRepository rolRepository;
-    private final PasswordEncoder passwordEncoder;
-    private final JwtService jwtService;
+ private static final String MENSAJE_REGISTRO = "Si los datos permiten el registro, podras iniciar sesion con tus credenciales.";
+ private static final Set<String> ROLES_TIENDA = Set.of("ADMIN", "EMPLEADO", "CLIENTE");
 
-    public AuthService(
-            UsuarioRepository usuarioRepository,
-            RolRepository rolRepository,
-            PasswordEncoder passwordEncoder,
-            JwtService jwtService
-    ) {
-        this.usuarioRepository = usuarioRepository;
-        this.rolRepository = rolRepository;
-        this.passwordEncoder = passwordEncoder;
-        this.jwtService = jwtService;
-    }
+ private final UsuarioRepository usuarios;
+ private final RolRepository roles;
+ private final PasswordEncoder passwords;
+ private final JwtService jwt;
+ private final AuthRateLimit limites;
+ private final String dummy;
+ private final TransactionTemplate tx;
 
-    // =====================================================
-    // REGISTRO NORMAL DE CLIENTES
-    // =====================================================
+ public AuthService(
+         UsuarioRepository usuarios,
+         RolRepository roles,
+         PasswordEncoder passwords,
+         JwtService jwt,
+         AuthRateLimit limites,
+         PlatformTransactionManager tm) {
+  this.usuarios = usuarios;
+  this.roles = roles;
+  this.passwords = passwords;
+  this.jwt = jwt;
+  this.limites = limites;
+  this.tx = new TransactionTemplate(tm);
+  this.dummy = passwords.encode(UUID.randomUUID().toString());
+ }
 
-    public String registrar(RegistroRequest request) {
+ public String registrar(RegistroRequest request) {
+  PasswordPolicy.validar(request.getPassword());
 
-        String nombre = request.getNombre().trim();
-        String apellido = request.getApellido().trim();
-        String correo = request.getCorreo()
-                .trim()
-                .toLowerCase(Locale.ROOT);
+  Long tenant = TenantContext.getCurrentTenant();
+  if (tenant == null) {
+   throw new ResponseStatusException(HttpStatus.UNAUTHORIZED);
+  }
 
-        Long tiendaId = TenantContext.getCurrentTenant();
+  String email = normalizarCorreo(request.getCorreo());
+  limites.comprobar("registro:" + tenant, email, 5);
 
-        if (usuarioRepository.existsByCorreoAndTiendaId(
-                correo, tiendaId
-        )) {
-            throw new RuntimeException(
-                    "El correo ya está registrado"
-            );
-        }
+  // Mismo coste computacional para correo existente o nuevo (evita enumeración por tiempo)
+  String hash = passwords.encode(request.getPassword());
 
-        Rol rolCliente = rolRepository.findByNombreRol("CLIENTE")
-                .orElseThrow(() ->
-                        new RuntimeException(
-                                "No existe el rol CLIENTE"
-                        )
-                );
+  var rolCliente = roles.findByNombreRol("CLIENTE")
+          .orElseThrow(() -> new IllegalStateException("Rol de registro no disponible"));
 
-        Usuario usuario = new Usuario();
+  if (usuarios.existsByCorreoAndTiendaId(email, tenant)) {
+   return MENSAJE_REGISTRO;
+  }
 
-        usuario.setNombre(nombre);
-        usuario.setApellido(apellido);
-        usuario.setCorreo(correo);
+  Usuario usuario = new Usuario();
+  usuario.setNombre(request.getNombre().trim());
+  usuario.setApellido(request.getApellido().trim());
+  usuario.setCorreo(email);
+  usuario.setPasswordHash(hash);
+  usuario.setTiendaId(tenant);
+  usuario.setEstado(true);
+  usuario.setRol(rolCliente);
 
-        usuario.setPasswordHash(
-                passwordEncoder.encode(request.getPassword())
-        );
+  try {
+   usuarios.saveAndFlush(usuario);
+  } catch (DataIntegrityViolationException ex) {
+   if (!esDuplicado(ex)) {
+    throw ex;
+   }
+  }
 
-        usuario.setRol(rolCliente);
-        usuario.setTiendaId(tiendaId);
-        usuario.setEstado(true);
+  return MENSAJE_REGISTRO;
+ }
 
-        usuarioRepository.save(usuario);
+ public LoginResponse login(LoginRequest request) {
+  return iniciar(request, false);
+ }
 
-        return "Usuario registrado correctamente";
-    }
+ public LoginResponse loginSuperAdmin(LoginRequest request) {
+  return iniciar(request, true);
+ }
 
-    // =====================================================
-    // LOGIN NORMAL DE CADA TIENDA
-    // =====================================================
+ private LoginResponse iniciar(LoginRequest request, boolean global) {
+  Long tenant = global ? null : TenantContext.getCurrentTenant();
+  if (!global && tenant == null) {
+   throw credencialesInvalidas();
+  }
 
-    public LoginResponse login(LoginRequest request) {
+  String contextoLimite = "login:" + (global ? "global" : tenant);
+  limites.comprobar(contextoLimite, normalizarCorreo(request.getCorreo()), 15);
 
-        String correo = request.getCorreo()
-                .trim()
-                .toLowerCase(Locale.ROOT);
+  return tx.execute(status -> autenticar(request, global));
+ }
 
-        Usuario usuario = usuarioRepository
-                .findByCorreoAndTiendaId(
-                        correo,
-                        TenantContext.getCurrentTenant()
-                )
-                .orElseThrow(() ->
-                        new RuntimeException(
-                                "Correo o contraseña incorrectos"
-                        )
-                );
+ private LoginResponse autenticar(LoginRequest request, boolean global) {
+  String email = normalizarCorreo(request.getCorreo());
+  Long tenant = global ? null : TenantContext.getCurrentTenant();
 
-        if (!Boolean.TRUE.equals(usuario.getEstado())) {
-            throw new RuntimeException(
-                    "El usuario está deshabilitado"
-            );
-        }
+  if (!global && tenant == null) {
+   throw credencialesInvalidas();
+  }
 
-        if (!passwordEncoder.matches(
-                request.getPassword(),
-                usuario.getPasswordHash()
-        )) {
-            throw new RuntimeException(
-                    "Correo o contraseña incorrectos"
-            );
-        }
+  Optional<Usuario> encontrado = global
+          ? usuarios.bloquearGlobalPorCorreo(email)
+          : usuarios.bloquearPorCorreoTienda(email, tenant);
 
-        String rol = usuario.getRol().getNombreRol();
+  Usuario u = encontrado.orElse(null);
+  String hash = (u == null) ? dummy : u.getPasswordHash();
 
-        String token = jwtService.generateToken(
-                usuario.getIdUsuario(),
-                usuario.getCorreo(),
-                rol,
-                usuario.getTiendaId()
-        );
+  boolean compatible = PasswordPolicy.compatible(request.getPassword());
+  String passwordEvaluar = compatible ? request.getPassword() : "invalid-password";
+  boolean matches = passwords.matches(passwordEvaluar, hash);
 
-        return new LoginResponse(
-                token,
-                usuario.getNombre(),
-                usuario.getCorreo(),
-                rol
-        );
-    }
+  String role = (u == null || u.getRol() == null) ? "" : u.getRol().getNombreRol();
+  boolean rolValido = global
+          ? "SUPER_ADMIN".equals(role)
+          : ROLES_TIENDA.contains(role);
 
-    // =====================================================
-    // LOGIN EXCLUSIVO PARA SUPERADMINISTRADOR
-    // =====================================================
+  if (!compatible
+          || !matches
+          || u == null
+          || !Boolean.TRUE.equals(u.getEstado())
+          || !Objects.equals(u.getCorreo(), email)
+          || !Objects.equals(u.getTiendaId(), tenant)
+          || !rolValido) {
+   throw credencialesInvalidas();
+  }
 
-    public LoginResponse loginSuperAdmin(LoginRequest request) {
+  String token = jwt.generateToken(
+          u.getIdUsuario(),
+          u.getCorreo(),
+          role,
+          u.getTiendaId(),
+          u.getMaterialSesion()
+  );
 
-        String correo = request.getCorreo() == null
-                ? ""
-                : request.getCorreo()
-                .trim()
-                .toLowerCase(Locale.ROOT);
+  return new LoginResponse(token, u.getNombre(), u.getCorreo(), role);
+ }
 
-        String password = request.getPassword();
+ private static String normalizarCorreo(String value) {
+  return value == null ? "" : value.trim().toLowerCase(Locale.ROOT);
+ }
 
-        if (correo.isBlank()
-                || password == null
-                || password.isBlank()) {
-            throw credencialesInvalidas();
-        }
+ private boolean esDuplicado(Throwable ex) {
+  for (Throwable causa = ex; causa != null; causa = causa.getCause()) {
+   if (causa instanceof SQLException sql && "23505".equals(sql.getSQLState())) {
+    return true;
+   }
+  }
+  return false;
+ }
 
-        // Buscar únicamente usuarios globales.
-        Usuario usuario = usuarioRepository
-                .findByCorreoAndTiendaIdIsNull(correo)
-                .orElseThrow(this::credencialesInvalidas);
-
-        // Verificar que la cuenta esté habilitada.
-        if (!Boolean.TRUE.equals(usuario.getEstado())) {
-            throw credencialesInvalidas();
-        }
-
-        // Solo SUPER_ADMIN puede usar este acceso.
-        if (usuario.getRol() == null
-                || !"SUPER_ADMIN".equals(
-                usuario.getRol().getNombreRol()
-        )) {
-            throw credencialesInvalidas();
-        }
-
-        // Comprobar contraseña mediante BCrypt.
-        if (!passwordEncoder.matches(
-                password,
-                usuario.getPasswordHash()
-        )) {
-            throw credencialesInvalidas();
-        }
-
-        // El usuario global no pertenece a una tienda.
-        // Hay que verificar que JwtService admita tenantId null.
-        String token = jwtService.generateToken(
-                usuario.getIdUsuario(),
-                usuario.getCorreo(),
-                "SUPER_ADMIN",
-                null
-        );
-
-        return new LoginResponse(
-                token,
-                usuario.getNombre(),
-                usuario.getCorreo(),
-                "SUPER_ADMIN"
-        );
-    }
-
-    private ResponseStatusException credencialesInvalidas() {
-        return new ResponseStatusException(
-                HttpStatus.UNAUTHORIZED,
-                "Credenciales incorrectas"
-        );
-    }
+ private ResponseStatusException credencialesInvalidas() {
+  return new ResponseStatusException(HttpStatus.UNAUTHORIZED, "Credenciales incorrectas");
+ }
 }

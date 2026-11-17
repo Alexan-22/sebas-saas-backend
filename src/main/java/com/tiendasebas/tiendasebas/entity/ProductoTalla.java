@@ -4,9 +4,7 @@ import jakarta.persistence.*;
 import lombok.*;
 
 @Entity
-@Table(name = "ProductoTallas", uniqueConstraints = {
-        @UniqueConstraint(name = "UQ_Producto_Talla", columnNames = {"IdProducto", "IdTalla"})
-})
+@Table(name = "ProductoTallas")
 @Data
 @NoArgsConstructor
 @AllArgsConstructor
@@ -21,9 +19,12 @@ public class ProductoTalla {
     private Producto producto;
 
     @ManyToOne
-    @JoinColumn(name = "IdTalla", nullable = false)
+    @JoinColumn(name = "IdTalla", nullable = true)
     private Talla talla;
 
     @Column(nullable = false)
     private Integer stock = 0;
+
+    @Column(name = "id_color")
+    private Long idColor;
 }

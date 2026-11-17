@@ -258,6 +258,13 @@ public class TransferenciaManualService {
         return jdbc.query(PAGO_SELECT+" WHERE tienda_id=? ORDER BY creado_en DESC LIMIT 100",
                 TransferenciaManualService::mapear,tenant());
     }
+    @Transactional(readOnly=true)
+    public com.tiendasebas.tiendasebas.dto.PaginaPagos<Pago> paginaReportes(Integer cursor,int size){
+        com.tiendasebas.tiendasebas.dto.PaginaPagos.validar(cursor,size);
+        var rows=jdbc.query(PAGO_SELECT+" WHERE tienda_id=? AND id_venta<? ORDER BY id_venta DESC LIMIT ?",TransferenciaManualService::mapear,tenant(),cursor==null?2147483648L:cursor.longValue(),size+1);
+        return com.tiendasebas.tiendasebas.dto.PaginaPagos.desde(rows,size,Pago::idVenta);
+    }
+
     @Transactional(readOnly = true)
     public List<Evento> auditoriaAdmin(int idVenta) {
         return jdbc.query("""

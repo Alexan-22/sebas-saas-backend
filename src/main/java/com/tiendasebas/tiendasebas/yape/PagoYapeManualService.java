@@ -257,6 +257,13 @@ public class PagoYapeManualService {
                 this::mapear, tenant());
     }
 
+    @Transactional(readOnly=true)
+    public com.tiendasebas.tiendasebas.dto.PaginaPagos<EstadoPago> paginaReportes(Integer cursor,int size){
+        com.tiendasebas.tiendasebas.dto.PaginaPagos.validar(cursor,size);
+        var rows=jdbc.query(CONSULTA+" WHERE tienda_id=? AND id_venta<? ORDER BY id_venta DESC LIMIT ?",this::mapear,tenant(),cursor==null?2147483648L:cursor.longValue(),size+1);
+        return com.tiendasebas.tiendasebas.dto.PaginaPagos.desde(rows,size,EstadoPago::idVenta);
+    }
+
     public record EventoAuditoria(Instant ocurridoEn, String evento,
                                  String estadoAnterior, String estadoNuevo,
                                  String actorCorreo, String observacion) {}

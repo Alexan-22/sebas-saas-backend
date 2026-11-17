@@ -53,7 +53,7 @@ public class ProductoService {
     public Producto buscar(Integer id) {
         Long tiendaId = TenantContext.getCurrentTenant();
         Producto producto = productoRepository.findByIdProductoAndTiendaId(id, tiendaId)
-                .orElseThrow(() -> new RuntimeException("Producto no encontrado"));
+                .orElseThrow(() -> new org.springframework.web.server.ResponseStatusException(org.springframework.http.HttpStatus.NOT_FOUND,"Producto no encontrado"));
 
         if (!Boolean.TRUE.equals(producto.getEstado())) {
             throw new RuntimeException("Producto no disponible");
@@ -108,7 +108,7 @@ public class ProductoService {
                 .orElseThrow(() -> new RuntimeException("Género no encontrado"));
 
         Categoria categoria = categoriaRepository.findByIdCategoriaAndTiendaId(idCategoria, tiendaId)
-                .orElseThrow(() -> new RuntimeException("Categoría no encontrada"));
+                .orElseThrow(() -> new org.springframework.web.server.ResponseStatusException(org.springframework.http.HttpStatus.NOT_FOUND,"Categoría no encontrada"));
 
         normalizarProducto(producto);
         producto.setIdProducto(null);
@@ -126,7 +126,7 @@ public class ProductoService {
     public Producto actualizar(Integer id, Producto datos, Integer idGenero, Integer idCategoria) {
         Long tiendaId = TenantContext.getCurrentTenant();
         Producto producto = productoRepository.findByIdProductoAndTiendaId(id, tiendaId)
-                .orElseThrow(() -> new RuntimeException("Producto no encontrado"));
+                .orElseThrow(() -> new org.springframework.web.server.ResponseStatusException(org.springframework.http.HttpStatus.NOT_FOUND,"Producto no encontrado"));
 
         validarProducto(datos);
 
@@ -134,7 +134,7 @@ public class ProductoService {
                 .orElseThrow(() -> new RuntimeException("Género no encontrado"));
 
         Categoria categoria = categoriaRepository.findByIdCategoriaAndTiendaId(idCategoria, tiendaId)
-                .orElseThrow(() -> new RuntimeException("Categoría no encontrada"));
+                .orElseThrow(() -> new org.springframework.web.server.ResponseStatusException(org.springframework.http.HttpStatus.NOT_FOUND,"Categoría no encontrada"));
 
         normalizarProducto(datos);
 
@@ -158,7 +158,7 @@ public class ProductoService {
     public void eliminar(Integer id) {
         Long tiendaId = TenantContext.getCurrentTenant();
         Producto producto = productoRepository.findByIdProductoAndTiendaId(id, tiendaId)
-                .orElseThrow(() -> new RuntimeException("Producto no encontrado"));
+                .orElseThrow(() -> new org.springframework.web.server.ResponseStatusException(org.springframework.http.HttpStatus.NOT_FOUND,"Producto no encontrado"));
 
         producto.setEstado(false);
         productoRepository.save(producto);

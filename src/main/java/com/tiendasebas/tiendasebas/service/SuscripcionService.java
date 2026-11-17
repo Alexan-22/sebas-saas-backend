@@ -4,6 +4,8 @@ package com.tiendasebas.tiendasebas.service;
 import com.tiendasebas.tiendasebas.dto.CrearSuscripcionRequest;
 import org.springframework.http.HttpStatus;
 import org.springframework.jdbc.core.JdbcTemplate;
+import java.math.RoundingMode;
+import java.time.DateTimeException;
 import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
 import org.springframework.web.server.ResponseStatusException;
@@ -22,8 +24,13 @@ public class SuscripcionService {
 
     private final JdbcTemplate jdbc;
 
-    public SuscripcionService(JdbcTemplate jdbc) {
+    private final PlanComercialService comercial;
+    private final SaasActividadService actividad;
+
+    public SuscripcionService(JdbcTemplate jdbc, PlanComercialService comercial, SaasActividadService actividad) {
         this.jdbc = jdbc;
+        this.comercial = comercial;
+        this.actividad = actividad;
     }
 
     private static final String CONSULTA = """
@@ -51,12 +58,19 @@ public class SuscripcionService {
     public List<Map<String, Object>> listarPorTienda(
             Long tiendaId
     ) {
+        if (tiendaId == null || tiendaId <= 0) throw error(HttpStatus.BAD_REQUEST, "Boutique no válida");
         return jdbc.queryForList(
                 CONSULTA +
                         " WHERE s.tienda_id = ? ORDER BY s.id DESC",
                 tiendaId
         );
     }
+
+    public Long planComercial() { return comercial.planComercial(); }
+
+    public PlanComercialService.Seleccion consultarPlanComercial() { return comercial.consultar(); }
+
+    public PlanComercialService.Seleccion seleccionarPlanComercial(Long id) { return comercial.seleccionar(id); }
 
     @Transactional
     public Map<String, Object> crear(
@@ -72,6 +86,7 @@ public class SuscripcionService {
                     "Tienda, plan y fecha son obligatorios");
         }
 
+        comercial.bloquearCatalogo(false);
         LocalDate hoy = LocalDate.now(ZONA);
 
         if (request.fechaInicio().isBefore(hoy)) {
@@ -99,7 +114,7 @@ public class SuscripcionService {
 
         List<Map<String, Object>> planes =
                 jdbc.queryForList("""
-                    SELECT id, precio_mensual,
+                    SELECT id, precio_mensual, moneda,
                            duracion_meses, activo
                     FROM public.planes_saas
                     WHERE id = ?
@@ -117,11 +132,23 @@ public class SuscripcionService {
                     "El plan esta desactivado");
         }
 
+        Long principal = planComercial();
+        if (principal == null) {
+            throw error(HttpStatus.CONFLICT, "Configura el plan comercial principal antes de crear suscripciones");
+        }
+        if (!principal.equals(request.planId())) {
+            throw error(HttpStatus.CONFLICT, "Selecciona el plan comercial principal");
+        }
+
         int meses = ((Number)
                 plan.get("duracion_meses")).intValue();
 
         LocalDate inicio = request.fechaInicio();
-        LocalDate fin = inicio.plusMonths(meses);
+        if (meses < 1 || meses > 36) throw error(HttpStatus.CONFLICT, "El plan tiene una duración no válida");
+        LocalDate fin;
+        try { fin = inicio.plusMonths(meses); }
+        catch (DateTimeException ex) { throw error(HttpStatus.BAD_REQUEST, "Fecha de suscripción fuera de rango"); }
+        if (inicio.getYear() < 1 || fin.getYear() > 9999) throw error(HttpStatus.BAD_REQUEST, "Fecha de suscripción fuera de rango");
 
         if (!fin.isAfter(inicio)) {
             throw error(HttpStatus.BAD_REQUEST,
@@ -134,7 +161,7 @@ public class SuscripcionService {
                 SELECT 1
                 FROM public.suscripciones_saas
                 WHERE tienda_id = ?
-                  AND estado IN ('ACTIVA', 'PENDIENTE')
+                  AND estado <> 'CANCELADA'
                   AND fecha_inicio < ?
                   AND fecha_fin > ?
             )
@@ -164,6 +191,11 @@ public class SuscripcionService {
                     "Precio contratado invalido");
         }
 
+        try { precio = precio.setScale(2, RoundingMode.UNNECESSARY); }
+        catch (ArithmeticException ex) { throw error(HttpStatus.BAD_REQUEST, "Precio contratado inválido"); }
+        String moneda = String.valueOf(plan.get("moneda")).trim();
+        if (!moneda.matches("[A-Z]{3}")) throw error(HttpStatus.CONFLICT, "Moneda del plan no válida");
+
         String estado = inicio.isAfter(hoy)
                 ? "PENDIENTE" : "ACTIVA";
 
@@ -179,7 +211,7 @@ public class SuscripcionService {
                 creado_en,
                 actualizado_en
             )
-            VALUES (?, ?, ?, ?, ?, ?, 'PEN',
+            VALUES (?, ?, ?, ?, ?, ?, ?,
                     CURRENT_TIMESTAMP, CURRENT_TIMESTAMP)
             RETURNING id
             """, Long.class,
@@ -188,9 +220,11 @@ public class SuscripcionService {
                 estado,
                 inicio,
                 fin,
-                precio
+                precio, moneda
         );
 
+        actividad.registrar("CREAR", "SUSCRIPCION", id,
+                "Se registró la suscripción " + id + " para la boutique " + request.tiendaId());
         return jdbc.queryForMap(
                 CONSULTA + " WHERE s.id = ?", id
         );
