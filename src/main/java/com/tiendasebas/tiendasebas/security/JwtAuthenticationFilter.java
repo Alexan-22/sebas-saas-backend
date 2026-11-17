@@ -138,7 +138,29 @@ public class JwtAuthenticationFilter
             );
 
         } catch (org.springframework.dao.DataAccessException ex) {
-            if (!response.isCommitted()) response.sendError(503,"Servicio de autenticacion no disponible");
+
+            Throwable causa = ex.getMostSpecificCause();
+
+            String estadoSql = causa instanceof java.sql.SQLException sql
+                    ? sql.getSQLState()
+                    : "NO_SQL_STATE";
+
+            org.slf4j.LoggerFactory
+                    .getLogger(JwtAuthenticationFilter.class)
+                    .error(
+                            "AUTH_DB_FAILURE ruta={} causa={} sqlState={} detalle={}",
+                            request.getServletPath(),
+                            causa.getClass().getSimpleName(),
+                            estadoSql,
+                            causa.getMessage()
+                    );
+
+            if (!response.isCommitted()) {
+                response.sendError(
+                        503,
+                        "Servicio de autenticacion no disponible"
+                );
+            }
         } finally {
 
             // Impedir que el contexto de una
