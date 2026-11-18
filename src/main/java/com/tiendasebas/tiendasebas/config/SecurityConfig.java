@@ -247,7 +247,8 @@ public class SecurityConfig {
                 List.of(
                         "Authorization",
                         "Content-Type",
-                        "Accept"
+                        "Accept",
+                        "X-Storefront-Slug"
                 )
         );
 
