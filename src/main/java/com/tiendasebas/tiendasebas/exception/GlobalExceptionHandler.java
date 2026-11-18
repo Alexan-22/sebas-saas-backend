@@ -173,6 +173,20 @@ public class GlobalExceptionHandler {
         return respuesta(HttpStatus.SERVICE_UNAVAILABLE,"Servicio no disponible","No se pudo completar la solicitud. Intenta mas tarde.");
     }
 
+
+    // ENDPOINT O RECURSO HTTP NO ENCONTRADO
+    @ExceptionHandler(
+            org.springframework.web.servlet.resource.NoResourceFoundException.class
+    )
+    public ResponseEntity<Map<String, Object>> manejarRecursoNoEncontrado(
+            org.springframework.web.servlet.resource.NoResourceFoundException exception
+    ) {
+        return respuesta(
+                HttpStatus.NOT_FOUND,
+                "Recurso no encontrado",
+                "La ruta solicitada no existe en este servidor."
+        );
+    }
     @ExceptionHandler(RuntimeException.class)
     public ResponseEntity<Map<String, Object>>
     manejarRuntimeException(
