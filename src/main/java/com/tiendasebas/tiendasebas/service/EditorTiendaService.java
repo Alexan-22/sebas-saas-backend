@@ -41,9 +41,15 @@ public class EditorTiendaService {
     public record Tema(String primario, String secundario, String tipografia) {}
 
     public record Contenido(CabeceraConfig cabecera, FooterConfig footer, List<String> seccionesHome,
-                            Portada portada, Tema tema) {
+                            Portada portada, Tema tema, List<PaginasAyuda.Pagina> paginasAyuda) {
         public Contenido {
             seccionesHome = seccionesHome == null ? SECCIONES_HOME : List.copyOf(seccionesHome);
+            // Los JSON antiguos no contienen paginasAyuda; null se interpreta como lista vacia.
+            paginasAyuda = PaginasAyuda.validar(paginasAyuda);
+        }
+        public Contenido(CabeceraConfig cabecera, FooterConfig footer, List<String> seccionesHome,
+                         Portada portada, Tema tema) {
+            this(cabecera, footer, seccionesHome, portada, tema, List.of());
         }
     }
     public record Borrador(long revision, Contenido contenido) {}
@@ -73,14 +79,14 @@ public class EditorTiendaService {
     public Borrador guardarCabecera(long revision, CabeceraConfig datos) {
         long tienda = bloquearTienda();
         Borrador actual = comprobarRevision(tienda, revision);
-        return guardar(tienda, new Contenido(cabecera.validar(datos), actual.contenido().footer(), actual.contenido().seccionesHome(), actual.contenido().portada(), actual.contenido().tema()));
+        return guardar(tienda, new Contenido(cabecera.validar(datos), actual.contenido().footer(), actual.contenido().seccionesHome(), actual.contenido().portada(), actual.contenido().tema(), actual.contenido().paginasAyuda()));
     }
 
     @Transactional
     public Borrador guardarFooter(long revision, FooterConfig datos) {
         long tienda = bloquearTienda();
         Borrador actual = comprobarRevision(tienda, revision);
-        return guardar(tienda, new Contenido(actual.contenido().cabecera(), footer.validar(datos), actual.contenido().seccionesHome(), actual.contenido().portada(), actual.contenido().tema()));
+        return guardar(tienda, new Contenido(actual.contenido().cabecera(), footer.validar(datos), actual.contenido().seccionesHome(), actual.contenido().portada(), actual.contenido().tema(), actual.contenido().paginasAyuda()));
     }
 
     @Transactional
@@ -91,7 +97,26 @@ public class EditorTiendaService {
                 || !new HashSet<>(secciones).containsAll(SECCIONES_HOME)) {
             throw new ResponseStatusException(HttpStatus.BAD_REQUEST, "Orden de secciones inválido");
         }
-        return guardar(tienda, new Contenido(actual.cabecera(), actual.footer(), secciones, actual.portada(), actual.tema()));
+        return guardar(tienda, new Contenido(actual.cabecera(), actual.footer(), secciones, actual.portada(), actual.tema(), actual.paginasAyuda()));
+    }
+
+    @Transactional
+    public Borrador guardarPaginasAyuda(long revision, List<PaginasAyuda.Pagina> datos) {
+        long tienda = bloquearTienda();
+        Contenido actual = comprobarRevision(tienda, revision).contenido();
+        final List<PaginasAyuda.Pagina> paginas;
+        try {
+            paginas = PaginasAyuda.validar(datos);
+        } catch (IllegalArgumentException error) {
+            throw new ResponseStatusException(HttpStatus.BAD_REQUEST, error.getMessage());
+        }
+        // No habilitar un Libro de Reclamaciones ficticio sin recepcion y registro reales.
+        if (paginas.stream().anyMatch(p -> p.clave() == PaginasAyuda.Clave.RECLAMACIONES && p.visible())) {
+            throw new ResponseStatusException(HttpStatus.BAD_REQUEST,
+                    "El Libro de Reclamaciones requiere un sistema funcional antes de mostrarse");
+        }
+        return guardar(tienda, new Contenido(actual.cabecera(), actual.footer(), actual.seccionesHome(),
+                actual.portada(), actual.tema(), paginas));
     }
 
     @Transactional(readOnly = true)
@@ -142,7 +167,7 @@ public class EditorTiendaService {
                     coleccion.titulo(), coleccion.imagen(), origen.getEtiqueta(), origen.getTextoBoton(), origen.getEnlace()));
         }
         return guardar(tienda, new Contenido(actual.cabecera(), actual.footer(), actual.seccionesHome(),
-                new Portada(banners, colecciones), actual.tema()));
+                new Portada(banners, colecciones), actual.tema(), actual.paginasAyuda()));
     }
 
     private boolean imagenGuardada(Portada portada, Banner banner, boolean movil) {
@@ -179,7 +204,7 @@ public class EditorTiendaService {
                     destino == DestinoImagen.MOVIL ? imagen : b.movil(), b.titulo()));
         }
         return guardar(tienda, new Contenido(actual.cabecera(), actual.footer(), actual.seccionesHome(),
-                new Portada(banners, colecciones), actual.tema()));
+                new Portada(banners, colecciones), actual.tema(), actual.paginasAyuda()));
     }
 
     @Transactional
@@ -192,7 +217,7 @@ public class EditorTiendaService {
         }
 
         return guardar(tienda, new Contenido(actual.cabecera(), actual.footer(),
-                actual.seccionesHome(), actual.portada(), tema));
+                actual.seccionesHome(), actual.portada(), tema, actual.paginasAyuda()));
     }
 
     private boolean colorValido(String color) {
@@ -205,7 +230,12 @@ public class EditorTiendaService {
 
     @Transactional(readOnly = true, isolation = org.springframework.transaction.annotation.Isolation.REPEATABLE_READ)
     public Contenido disenoPublicado() {
-        return publicado();
+        Contenido datos = publicado();
+        // La API publica no entrega textos de paginas ocultas.
+        return new Contenido(datos.cabecera(), datos.footer(), datos.seccionesHome(),
+                datos.portada(), datos.tema(), datos.paginasAyuda().stream()
+                    .filter(p -> p.visible() && p.clave() != PaginasAyuda.Clave.RECLAMACIONES)
+                    .toList());
     }
 
     @Transactional
@@ -225,7 +255,7 @@ public class EditorTiendaService {
 
         Contenido contenido = actual.contenido();
         Contenido publicado = new Contenido(cabecera.guardar(contenido.cabecera()),
-                footer.guardar(contenido.footer()), contenido.seccionesHome(), contenido.portada(), contenido.tema());
+                footer.guardar(contenido.footer()), contenido.seccionesHome(), contenido.portada(), contenido.tema(), contenido.paginasAyuda());
         guardarVersion(tienda, ultima + 1, publicado, autor);
         jdbc.update("DELETE FROM public.saas_editor_borradores WHERE tienda_id = ?", tienda);
         return new Borrador(0, publicado);
@@ -266,7 +296,8 @@ public class EditorTiendaService {
                 .stream().findFirst().orElse(null);
         return new Contenido(cabecera.obtener(), footer.obtener(),
                 version == null ? SECCIONES_HOME : version.seccionesHome(),
-                version == null ? null : version.portada(), version == null ? null : version.tema());
+                version == null ? null : version.portada(), version == null ? null : version.tema(),
+                version == null ? List.of() : version.paginasAyuda());
     }
 
     private Borrador comprobarRevision(long tienda, long revision) {
