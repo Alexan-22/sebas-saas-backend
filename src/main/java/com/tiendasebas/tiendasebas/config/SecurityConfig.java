@@ -85,6 +85,13 @@ public class SecurityConfig {
                 )
 
                 .authorizeHttpRequests(auth -> auth
+                        // Yape publico: configuracion y QR.
+                        .requestMatchers(
+                                HttpMethod.GET,
+                                "/api/yape/publico",
+                                "/api/yape/qr"
+                        ).permitAll()
+
                         // Preservar el estado original al renderizar errores del contenedor.
                         // La solicitud HTTP inicial sigue pasando por todas las reglas.
                         .requestMatchers(request -> request.getDispatcherType() == DispatcherType.ERROR
