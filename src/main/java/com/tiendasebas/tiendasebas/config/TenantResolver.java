@@ -41,6 +41,13 @@ public class TenantResolver {
     @Value("${app.tenant.staging-subdomain:}")
     private String stagingSubdomain;
 
+    // Selector PUBLICO opt-in. Nunca es una prueba de identidad/autorizacion.
+    @Value("${app.tenant.staging-selector-enabled:false}")
+    private boolean stagingSelectorEnabled;
+
+    @Value("${app.tenant.staging-allowed-subdomains:}")
+    private String stagingAllowedSubdomains;
+
     @Value("${spring.profiles.active:}")
     private String activeProfile;
 
@@ -86,6 +93,23 @@ public class TenantResolver {
                         "[a-z0-9](?:[a-z0-9-]{0,48}[a-z0-9])?"
                 )) {
 
+            // Un selector declarado por el navegador solo elige el contexto de
+            // contenido; la autorizacion privada exige JWT con tid coincidente.
+            // Si no se envia selector se conserva exactamente el alias anterior.
+            var enviados = request.getHeaders("X-Storefront-Slug");
+            if (enviados != null && enviados.hasMoreElements()) {
+                String elegido = enviados.nextElement();
+                if (enviados.hasMoreElements() || !stagingSelectorEnabled
+                        || elegido == null
+                        || !elegido.matches("[a-z0-9](?:[a-z0-9-]{0,48}[a-z0-9])?")) {
+                    return Optional.empty();
+                }
+                boolean permitido = java.util.Arrays.stream(stagingAllowedSubdomains.split(","))
+                        .map(String::trim)
+                        .anyMatch(elegido::equals);
+                if (!permitido) return Optional.empty();
+                return buscarTiendaActiva(elegido);
+            }
             return buscarTiendaActiva(stagingSubdomain);
         }
 
