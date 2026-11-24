@@ -42,6 +42,12 @@ public class EditorTiendaController {
         return editor.guardarFooter(revision, datos);
     }
 
+    @PutMapping("/borrador/paginas-ayuda")
+    public Borrador guardarPaginasAyuda(@RequestParam long revision,
+                                        @RequestBody List<com.tiendasebas.tiendasebas.service.PaginasAyuda.Pagina> datos) {
+        return editor.guardarPaginasAyuda(revision, datos);
+    }
+
     @PutMapping("/borrador/home")
     public Borrador guardarHome(@RequestParam long revision, @RequestBody List<String> secciones) {
         return editor.guardarHome(revision, secciones);
