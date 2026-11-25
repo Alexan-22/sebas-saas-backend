@@ -70,8 +70,9 @@ public class RespuestaFormalReclamacionesService {
                     VALUES (?,?,?,'RESPUESTA_CONSUMIDOR',?,?,?)
                     """, tenant, encontrados.get(0).reclamacionId(), eventoId, correo,
                     "Respuesta a su reclamación N.º " + numeroHoja,
-                    "Se registró una respuesta formal a su reclamación N.º " + numeroHoja
-                       + ". Contacte al proveedor por un canal verificado para obtenerla de forma segura.");
+                    "Respuesta formal a su reclamación N.º " + numeroHoja
+                        + "\n\n" + texto.trim()
+                        + "\n\nEste correo contiene la respuesta registrada por el proveedor.");
             }
             return new Resultado(numeroHoja, pendiente);
         });

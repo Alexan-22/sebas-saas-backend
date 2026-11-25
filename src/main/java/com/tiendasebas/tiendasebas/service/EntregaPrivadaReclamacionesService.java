@@ -41,6 +41,7 @@ public class EntregaPrivadaReclamacionesService {
     }
 
     public record Confirmacion(long numeroHoja, String tokenConstancia) {}
+    private record AvisoAdmin(String correo, long eventoId) {}
 
     public Confirmacion registrar(LibroReclamacionesService.Solicitud solicitud) {
         long tenant = TenantContext.getCurrentTenant();
@@ -59,6 +60,30 @@ public class EntregaPrivadaReclamacionesService {
                     (tienda_id, reclamacion_id, token_sha256)
                     VALUES (?, ?, ?)
                     """, tenant, hoja.id(), hash);
+            // Notificacion administrativa en outbox, atomica con la recepcion.
+            // Solo se genera si el correo del administrador esta verificado.
+            var correos = jdbc.query("""
+                    SELECT c.correo_admin, e.id
+                      FROM public.saas_reclamaciones_correos_config c
+                      JOIN public.saas_reclamaciones_eventos e
+                        ON e.tienda_id = c.tienda_id AND e.reclamacion_id = ?
+                     WHERE c.tienda_id = ? AND c.correo_admin_verificado = true
+                       AND e.tipo = 'RECEPCION'
+                     ORDER BY e.id LIMIT 1
+                    """, (rs, i) -> new AvisoAdmin(rs.getString(1), rs.getLong(2)), hoja.id(), tenant);
+            if (correos.size() == 1 && correos.get(0).correo() != null
+                    && correos.get(0).correo().length() <= 254
+                    && correos.get(0).correo().matches("^[^\\s@]+@[^\\s@]+\\.[^\\s@]+$")) {
+                jdbc.update("""
+                        INSERT INTO public.saas_reclamaciones_notificaciones
+                          (tienda_id,reclamacion_id,evento_id,clase,destinatario,asunto,cuerpo)
+                        VALUES (?,?,?,'RECLAMACION_NUEVA',?,?,?)
+                        ON CONFLICT (tienda_id,evento_id,clase) DO NOTHING
+                        """, tenant, hoja.id(), correos.get(0).eventoId(),
+                        correos.get(0).correo(), "Nueva reclamacion N.º " + hoja.numeroHoja(),
+                        "Se registro una nueva reclamacion N.º " + hoja.numeroHoja()
+                            + ". Ingrese al panel de administracion para revisarla.");
+            }
             return new Confirmacion(hoja.numeroHoja(), token);
         });
     }
