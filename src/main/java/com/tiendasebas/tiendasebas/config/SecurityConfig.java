@@ -156,6 +156,8 @@ public class SecurityConfig {
                         ).permitAll()
 
                         // CONFIGURACION DE IDENTIDAD: ADMIN AUTENTICADO DE SU TENANT
+                        .requestMatchers(HttpMethod.POST, "/api/v1/reclamaciones/publico").denyAll()
+                        .requestMatchers("/api/v1/reclamaciones/admin", "/api/v1/reclamaciones/admin/**").hasRole("ADMIN")
                         .requestMatchers("/api/v1/tiendas/admin/**").hasRole("ADMIN")
 
                                                 // B2B-SAAS-FASE2A: Escritura y administracion solo del propietario
