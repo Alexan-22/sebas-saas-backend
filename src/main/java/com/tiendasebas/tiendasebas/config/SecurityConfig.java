@@ -157,6 +157,9 @@ public class SecurityConfig {
 
                         // CONFIGURACION DE IDENTIDAD: ADMIN AUTENTICADO DE SU TENANT
                         .requestMatchers(HttpMethod.POST, "/api/v1/reclamaciones/publico").denyAll()
+                        // Rutas publicas solo mientras el controlador mantenga el feature flag habilitado.
+                        .requestMatchers(HttpMethod.POST, "/api/v1/reclamaciones/registro",
+                                "/api/v1/reclamaciones/constancia").permitAll()
                         .requestMatchers("/api/v1/reclamaciones/admin", "/api/v1/reclamaciones/admin/**").hasRole("ADMIN")
                         .requestMatchers("/api/v1/tiendas/admin/**").hasRole("ADMIN")
 
