@@ -33,6 +33,7 @@ class EntregaPrivadaReclamacionesPostgresTest {
             b = root.queryForObject("INSERT INTO public.tiendas(nombre) VALUES ('Tienda ficticia B') RETURNING id", Long.class);
             aplicar("db/manual/V23__libro_reclamaciones_multitienda.sql");
             aplicar("db/manual/V24__reclamaciones_accesos_y_proveedor.sql");
+            aplicar("db/manual/V25__reclamaciones_respuestas_y_buzon.sql");
             String role = "entrega_fixture_app";
             String pass = UUID.randomUUID().toString().replace("'", "");
             root.execute("CREATE ROLE " + role + " LOGIN PASSWORD '" + pass + "' NOSUPERUSER NOBYPASSRLS");
@@ -43,6 +44,8 @@ class EntregaPrivadaReclamacionesPostgresTest {
             root.execute("GRANT SELECT, INSERT ON public.saas_reclamaciones_eventos TO " + role);
             root.execute("GRANT SELECT, INSERT ON public.saas_reclamaciones_accesos TO " + role);
             root.execute("GRANT SELECT ON public.saas_reclamaciones_proveedores TO " + role);
+            root.execute("GRANT SELECT ON public.saas_reclamaciones_correos_config TO " + role);
+            root.execute("GRANT INSERT ON public.saas_reclamaciones_notificaciones TO " + role);
             root.execute("GRANT USAGE ON SEQUENCE public.saas_reclamaciones_id_seq, public.saas_reclamaciones_eventos_id_seq TO " + role);
             assertFalse(root.queryForObject("SELECT rolsuper OR rolbypassrls FROM pg_roles WHERE rolname=?", Boolean.class, role));
             DataSource data = ds(url, role, pass);
