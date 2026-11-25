@@ -142,16 +142,7 @@ public class VentaService {
         // =====================================================
         // PROCESAR PRODUCTOS
         // =====================================================
-        BigDecimal subtotalProductos = BigDecimal.ZERO;
-        for (CompraItemDto item : request.getItems().stream()
-        .sorted(java.util.Comparator.comparing(
-                CompraItemDto::getIdProductoTalla,
-                java.util.Comparator.nullsFirst(java.util.Comparator.naturalOrder())))
-        .toList()) {
-            subtotalProductos = subtotalProductos.add(
-                    procesarItemVenta(venta, item.getIdProductoTalla(), item.getCantidad(), tiendaId)
-            );
-        }
+        BigDecimal subtotalProductos = procesarProductosCompra(venta, request, tiendaId);
 
         // =====================================================
         // TOTAL FINAL
@@ -184,6 +175,25 @@ public class VentaService {
         );
     }
 
+    // Logica compartida para compras registradas e invitadas.
+    // Se ejecuta dentro de la transaccion de la venta.
+    private BigDecimal procesarProductosCompra(
+            Venta venta,
+            CompraRequest request,
+            Long tiendaId) {
+        BigDecimal subtotalProductos = BigDecimal.ZERO;
+        for (CompraItemDto item : request.getItems().stream()
+        .sorted(java.util.Comparator.comparing(
+                CompraItemDto::getIdProductoTalla,
+                java.util.Comparator.nullsFirst(java.util.Comparator.naturalOrder())))
+        .toList()) {
+            subtotalProductos = subtotalProductos.add(
+                    procesarItemVenta(venta, item.getIdProductoTalla(), item.getCantidad(), tiendaId)
+            );
+        }
+
+        return subtotalProductos;
+    }
     // =========================================================
     // PROCESAR ITEM DE VENTA
     // =========================================================
@@ -241,6 +251,71 @@ public class VentaService {
     }
 
     // =========================================================
+    /** Solo invocar desde CheckoutInvitadoService, dentro de la misma transaccion. */
+    @Transactional(propagation = org.springframework.transaction.annotation.Propagation.MANDATORY)
+    public CompraResponse realizarCompraInvitadoInterna(CompraInvitadoRequest request) {
+        Long tiendaId = TenantContext.getCurrentTenant();
+        if (tiendaId == null || tiendaId <= 0) {
+            throw new org.springframework.web.server.ResponseStatusException(
+                    org.springframework.http.HttpStatus.FORBIDDEN, "Tienda no identificada");
+        }
+        if (request == null || request.getCliente() == null || request.getItems() == null || request.getItems().isEmpty()) {
+            throw new CompraException("Datos de compra invitada invalidos");
+        }
+        String medioPago = validarMedioPagoOnline(request.getMedioPago());
+        if (!"YAPE".equals(medioPago) && !"TRANSFERENCIA".equals(medioPago)) {
+            throw new CompraException("Pago invitado no disponible para este metodo");
+        }
+        if ("YAPE".equals(medioPago)) {
+            pagoYapeManualService.validarHabilitado(tiendaId);
+        } else {
+            transferencias.validarHabilitado(request.getCuentaBancariaId());
+        }
+        DireccionEnvioDto d = request.getDireccionEnvio();
+        if (d == null) throw new CompraException("Direccion obligatoria");
+        validarDireccionEnvio(d);
+        BigDecimal delivery;
+        try {
+            delivery = deliveryService.calcularCostoEnvio(d.getDepartamento(), d.getProvincia(), d.getDistrito());
+        } catch (IllegalArgumentException ex) {
+            throw new CompraException(ex.getMessage());
+        }
+        DireccionEnvio direccion = new DireccionEnvio();
+        direccion.setDepartamento(d.getDepartamento().trim());
+        direccion.setProvincia(d.getProvincia().trim());
+        direccion.setDistrito(d.getDistrito().trim());
+        direccion.setDireccionExacta(d.getDireccionExacta().trim());
+        direccion.setReferencia(d.getReferencia() == null || d.getReferencia().isBlank() ? null : d.getReferencia().trim());
+        direccion.setCostoDelivery(delivery);
+
+        Venta venta = new Venta();
+        venta.setTiendaId(tiendaId);
+        venta.setUsuario(null);
+        venta.setTipoVenta(TipoVenta.ONLINE);
+        venta.setFechaVenta(LocalDateTime.now());
+        venta.setEstado("PAGO_PENDIENTE");
+        venta.setEstadoPedido(EstadoPedido.RECIBIDO);
+        venta.setMedioPago(medioPago);
+        venta.setDireccionEnvio(direccion);
+        venta.setSubtotal(BigDecimal.ZERO);
+        venta.setCostoDelivery(delivery);
+        venta.setTotal(BigDecimal.ZERO);
+        venta = ventaRepository.save(venta);
+
+        BigDecimal subtotal = procesarProductosCompra(venta, request, tiendaId);
+        BigDecimal total = subtotal.add(delivery);
+        venta.setSubtotal(subtotal);
+        venta.setTotal(total);
+        ventaRepository.saveAndFlush(venta);
+        String correo = request.getCliente().getCorreo().strip().toLowerCase(java.util.Locale.ROOT);
+        if ("YAPE".equals(medioPago)) {
+            pagoYapeManualService.registrarPendienteInvitado(venta, correo);
+        } else {
+            transferencias.registrarPendienteInvitado(venta, correo, request.getCuentaBancariaId());
+        }
+        return new CompraResponse(venta.getIdVenta(), subtotal, delivery, total,
+                venta.getEstado(), medioPago, "Pedido invitado registrado; pago pendiente de verificacion");
+    }
     // CLIENTE - LISTAR SUS COMPRAS
     // =========================================================
     @Transactional(readOnly = true)

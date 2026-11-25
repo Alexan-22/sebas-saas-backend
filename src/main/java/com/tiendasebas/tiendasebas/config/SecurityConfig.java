@@ -85,6 +85,10 @@ public class SecurityConfig {
                 )
 
                 .authorizeHttpRequests(auth -> auth
+                        // Solo el endpoint publico de compras invitadas.
+                        // La autorizacion del detalle se efectua por token aleatorio en el servicio.
+                        .requestMatchers(HttpMethod.POST, "/api/ventas/invitado").permitAll()
+                        .requestMatchers(HttpMethod.GET, "/api/ventas/invitado/*").permitAll()
                         // Yape publico: configuracion y QR.
                         .requestMatchers(
                                 HttpMethod.GET,
