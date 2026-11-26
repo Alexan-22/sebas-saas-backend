@@ -28,5 +28,4 @@ jobs:
       - name: Compilar y validar checkout en clústeres privados
         run: >-
           mvn -B verify
-          -Djava.net.http.allowRestrictedHeaders=host
-          -Dtest=CheckoutInvitadoConfiguracionTest,CheckoutInvitadoMigracionRlsTest,CheckoutInvitadoServiceTest,BootstrapCheckoutRlsTest,YapeCheckoutSafetyTest,TransferenciaImagenTest
+          -Dtest=CheckoutInvitadoConfiguracionTest,CheckoutInvitadoMigracionRlsTest,CheckoutInvitadoServiceTest,BootstrapCheckoutRlsTest,RbacVentasSeguridadTest,YapeCheckoutSafetyTest,TransferenciaImagenTest

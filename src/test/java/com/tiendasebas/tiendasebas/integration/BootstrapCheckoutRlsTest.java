@@ -7,10 +7,33 @@ class BootstrapCheckoutRlsTest {
  static javax.sql.DataSource source;
  static final java.util.concurrent.ConcurrentHashMap<Long,String> mailbox=new java.util.concurrent.ConcurrentHashMap<>();
  static int port;
- static java.net.http.HttpResponse<String> call(String host,String method,String route,String body,String token)throws Exception{
-  var builder=java.net.http.HttpRequest.newBuilder(java.net.URI.create("http://127.0.0.1:"+port+route)).timeout(java.time.Duration.ofSeconds(20)).header("Host",host+".example.test").header("Content-Type","application/json");
-  if(token!=null)builder.header("Authorization","Bearer "+token);
-  return java.net.http.HttpClient.newHttpClient().send(builder.method(method,body==null?java.net.http.HttpRequest.BodyPublishers.noBody():java.net.http.HttpRequest.BodyPublishers.ofString(body)).build(),java.net.http.HttpResponse.BodyHandlers.ofString());
+ private record RespuestaHttp(int statusCode, String body) {}
+
+ static RespuestaHttp call(String host, String method, String route, String body, String token) throws Exception {
+  return call(host, method, route, body, token, null);
+ }
+
+ private static RespuestaHttp call(
+     String host, String method, String route, String body, String token, String checkoutToken
+ ) throws Exception {
+  var command = new ArrayList<>(List.of(
+      "curl", "--disable", "--silent", "--show-error", "--noproxy", "*",
+      "--max-time", "20", "--request", method, "--header", "Host: " + host + ".example.test",
+      "--header", "Content-Type: application/json", "--write-out", "\n%{http_code}",
+      "http://127.0.0.1:" + port + route
+  ));
+  if (token != null) command.addAll(List.of("--header", "Authorization: Bearer " + token));
+  if (checkoutToken != null) command.addAll(List.of("--header", "X-Checkout-Token: " + checkoutToken));
+  if (body != null) command.addAll(List.of("--data-binary", "@-"));
+
+  var process = new ProcessBuilder(command).redirectErrorStream(true).start();
+  try (var input = process.getOutputStream()) {
+   if (body != null) input.write(body.getBytes(java.nio.charset.StandardCharsets.UTF_8));
+  }
+  String output = new String(process.getInputStream().readAllBytes(), java.nio.charset.StandardCharsets.UTF_8);
+  if (process.waitFor() != 0) throw new IllegalStateException("Falló la solicitud HTTP aislada: " + output);
+  int separator = output.lastIndexOf('\n');
+  return new RespuestaHttp(Integer.parseInt(output.substring(separator + 1).trim()), output.substring(0, separator));
  }
 
  static String compra(String key,int variant,int quantity){return "{\"claveIdempotencia\":\""+key+"\",\"medioPago\":\"YAPE\",\"items\":[{\"idProductoTalla\":"+variant+",\"cantidad\":"+quantity+"}],\"direccionEnvio\":{\"departamento\":\"Lima\",\"provincia\":\"Lima\",\"distrito\":\"Miraflores\",\"direccionExacta\":\"Fixture local\"}}";}
@@ -167,7 +190,7 @@ class BootstrapCheckoutRlsTest {
   finally { TenantContext.clear(); }
  }
 
- private static java.net.http.HttpResponse<String> checkout(String host, String medio, UUID clave, int variante, int cantidad)
+ private static RespuestaHttp checkout(String host, String medio, UUID clave, int variante, int cantidad)
      throws Exception {
   String body = compra(clave.toString(), variante, cantidad).replace("\"YAPE\"", "\"" + medio + "\"");
   body = body.substring(0, body.length()-1)
@@ -176,11 +199,8 @@ class BootstrapCheckoutRlsTest {
   return call(host, "POST", "/api/ventas/invitado", body, null);
  }
 
- private static java.net.http.HttpResponse<String> detalleInvitado(String host, int idVenta, String token) throws Exception {
-  var request = java.net.http.HttpRequest.newBuilder(java.net.URI.create("http://127.0.0.1:" + port + "/api/ventas/invitado/" + idVenta))
-      .timeout(java.time.Duration.ofSeconds(20)).header("Host", host + ".example.test")
-      .header("X-Checkout-Token", token).GET().build();
-  return java.net.http.HttpClient.newHttpClient().send(request, java.net.http.HttpResponse.BodyHandlers.ofString());
+ private static RespuestaHttp detalleInvitado(String host, int idVenta, String token) throws Exception {
+  return call(host, "GET", "/api/ventas/invitado/" + idVenta, null, null, token);
  }
 
 }
