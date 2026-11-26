@@ -179,6 +179,33 @@ public class PagoYapeManualService {
         return value != null && value == expected;
     }
 
+    /** Venta invitada: sin usuario registrado y dentro de la transaccion de checkout. */
+    @Transactional(propagation = org.springframework.transaction.annotation.Propagation.MANDATORY)
+    public void registrarPendienteInvitado(Venta venta, String correoInvitado) {
+        long tiendaId = tenant();
+        if (venta == null || venta.getUsuario() != null ||
+                !tiendaIdEquals(venta.getTiendaId(), tiendaId) ||
+                venta.getIdVenta() == null || venta.getTotal() == null ||
+                venta.getTotal().compareTo(BigDecimal.ZERO) <= 0 ||
+                !"YAPE".equals(venta.getMedioPago()) ||
+                correoInvitado == null || correoInvitado.isBlank()) {
+            throw conflicto("Pedido Yape invitado invalido");
+        }
+        Cuenta cuenta = cuentaHabilitada(tiendaId);
+        String correo = correoInvitado.strip().toLowerCase(java.util.Locale.ROOT);
+        List<Long> ids = jdbc.query("""
+                INSERT INTO public.yape_pagos_manuales
+                    (tienda_id, id_venta, usuario_id, correo_cliente, importe, numero_yape,
+                     titular_yape, qr_imagen, qr_sha256, estado)
+                VALUES (?, ?, NULL, ?, ?, ?, ?, ?, ?, 'PENDIENTE')
+                RETURNING id
+                """, (rs, row) -> rs.getLong(1),
+                tiendaId, venta.getIdVenta(), correo, venta.getTotal(),
+                cuenta.numero(), cuenta.titular(), cuenta.qr(), cuenta.sha());
+        if (ids.size() != 1) throw conflicto("No se pudo registrar el pago Yape invitado");
+        registrarEvento(tiendaId, ids.getFirst(), venta.getIdVenta(),
+                "CREADO", null, "PENDIENTE", correo, "Checkout invitado");
+    }
     private void registrarEvento(long tiendaId, long pagoId, int idVenta,
                                String evento, String antes, String despues,
                                String actor, String observacion) {

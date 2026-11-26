@@ -219,6 +219,29 @@ public class TransferenciaManualService {
         if(ids.size()!=1) throw conflicto("No se pudo registrar la transferencia");
         evento(t,ids.getFirst(),venta.getIdVenta(),"CREADO",null,"PENDIENTE",usuario.getCorreo(),null);
     }
+    /** Venta invitada: sin usuario registrado y dentro de la transaccion de checkout. */
+    @Transactional(propagation = org.springframework.transaction.annotation.Propagation.MANDATORY)
+    public void registrarPendienteInvitado(Venta venta, String correoInvitado, Long cuentaId) {
+        long t = tenant();
+        if (venta == null || venta.getUsuario() != null ||
+                venta.getIdVenta() == null || venta.getTotal() == null ||
+                venta.getTotal().signum() <= 0 ||
+                !"TRANSFERENCIA".equals(venta.getMedioPago()) ||
+                !tiendaIdEquals(venta.getTiendaId(), t) ||
+                correoInvitado == null || correoInvitado.isBlank()) {
+            throw conflicto("Venta bancaria invitada invalida");
+        }
+        Cuenta c = cuentaDisponible(cuentaId);
+        String correo = correoInvitado.strip().toLowerCase(java.util.Locale.ROOT);
+        List<Long> ids = jdbc.query("""
+                INSERT INTO public.transferencia_pagos_manuales
+                  (tienda_id,id_venta,usuario_id,correo_cliente,importe,banco,titular,numero_cuenta,cci,cuenta_bancaria_id)
+                VALUES (?,?,NULL,?,?,?,?,?,?,?) RETURNING id
+                """, (r, i) -> r.getLong(1), t, venta.getIdVenta(), correo,
+                venta.getTotal(), c.banco(), c.titular(), c.numeroCuenta(), c.cci(), c.id());
+        if (ids.size() != 1) throw conflicto("No se pudo registrar la transferencia invitada");
+        evento(t, ids.getFirst(), venta.getIdVenta(), "CREADO", null, "PENDIENTE", correo, "Checkout invitado");
+    }
     private void evento(long t,long pago,int idVenta,String tipo,String anterior,String nuevo,String actor,String nota) {
         jdbc.update("""
             INSERT INTO public.transferencia_pagos_auditoria
