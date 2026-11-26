@@ -4,6 +4,9 @@ BEGIN;
 GRANT SELECT, INSERT ON public.venta_clientes_invitados,
     public.checkout_invitado_reintentos, public.checkout_invitado_accesos TO sebas_auth_app;
 GRANT SELECT ON public.transferencia_cuentas_bancarias TO sebas_auth_app;
+-- PostgreSQL exige permiso UPDATE de columna para el SELECT FOR SHARE del checkout.
+-- La política con WITH CHECK (false) impide modificar la cuenta.
+GRANT UPDATE (id) ON public.transferencia_cuentas_bancarias TO sebas_auth_app;
 GRANT SELECT, INSERT ON public.transferencia_pagos_manuales TO sebas_auth_app;
 GRANT INSERT ON public.transferencia_pagos_auditoria TO sebas_auth_app;
 GRANT USAGE ON SEQUENCE public.transferencia_pagos_manuales_id_seq,
@@ -37,6 +40,11 @@ WITH CHECK (tienda_id = nullif(current_setting('app.tenant_id', true),'')::bigin
 CREATE POLICY fixture_checkout_transferencia_cuenta ON public.transferencia_cuentas_bancarias
 FOR SELECT TO sebas_auth_app
 USING (tienda_id = nullif(current_setting('app.tenant_id', true),'')::bigint);
+
+CREATE POLICY fixture_checkout_transferencia_bloqueo ON public.transferencia_cuentas_bancarias
+FOR UPDATE TO sebas_auth_app
+USING (tienda_id = nullif(current_setting('app.tenant_id', true),'')::bigint)
+WITH CHECK (false);
 
 CREATE POLICY fixture_checkout_transferencia_lectura ON public.transferencia_pagos_manuales
 FOR SELECT TO sebas_auth_app

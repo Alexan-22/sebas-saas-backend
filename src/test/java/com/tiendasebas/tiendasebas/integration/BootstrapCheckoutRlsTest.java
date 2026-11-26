@@ -143,6 +143,9 @@ class BootstrapCheckoutRlsTest {
   assertEquals(200, transferencia.statusCode(), transferencia.body());
   var transferenciaJson = json.readTree(transferencia.body());
   int ventaTransferencia = transferenciaJson.get("compra").get("idVenta").asInt();
+  assertEquals(2L, transferenciaJson.get("cuentaBancariaId").asLong());
+  conTienda(tx, 2L, () -> assertThrows(org.springframework.dao.DataAccessException.class,
+      () -> db.update("UPDATE transferencia_cuentas_bancarias SET id=id WHERE id=2")));
   assertEquals(200, detalleInvitado("fixture-lima", ventaYape, tokenYape).statusCode());
   assertEquals(404, detalleInvitado("fixture-cusco", ventaYape, tokenYape).statusCode());
   assertEquals(404, detalleInvitado("fixture-lima", ventaYape, transferenciaJson.get("tokenAcceso").asText()).statusCode());
