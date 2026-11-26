@@ -14,7 +14,14 @@ class BootstrapCheckoutRlsTest {
  }
 
  static String compra(String key,int variant,int quantity){return "{\"claveIdempotencia\":\""+key+"\",\"medioPago\":\"YAPE\",\"items\":[{\"idProductoTalla\":"+variant+",\"cantidad\":"+quantity+"}],\"direccionEnvio\":{\"departamento\":\"Lima\",\"provincia\":\"Lima\",\"distrito\":\"Miraflores\",\"direccionExacta\":\"Fixture local\"}}";}
- static String login(String host,String password)throws Exception{var r=call(host,"POST","/api/auth/login","{\"correo\":\"igual@example.test\",\"password\":\""+password+"\"}",null);assertEquals(200,r.statusCode());return tools.jackson.databind.json.JsonMapper.builder().build().readTree(r.body()).get("token").asText();}
+ static String login(String host,String password)throws Exception{
+  return login(host,"igual@example.test",password);
+ }
+ static String login(String host,String email,String password)throws Exception{
+  var r=call(host,"POST","/api/auth/login","{\"correo\":\""+email+"\",\"password\":\""+password+"\"}",null);
+  assertEquals(200,r.statusCode(),r.body());
+  return tools.jackson.databind.json.JsonMapper.builder().build().readTree(r.body()).get("token").asText();
+ }
 
  @Configuration @EnableTransactionManagement @org.springframework.data.jpa.repository.config.EnableJpaRepositories("com.tiendasebas.tiendasebas.repository")
 
@@ -45,6 +52,10 @@ class BootstrapCheckoutRlsTest {
     BootstrapVacioPostgresTest.ejecutar(c,Path.of("src/main/resources/db/bootstrap/B027__reportes_ventas_rls_local.sql"));
     c.createStatement().execute("INSERT INTO direcciones_envio(tienda_id,departamento,provincia,distrito,direccion_exacta,costo_delivery) SELECT id,'Fixture','Fixture','Fixture','DIRECCION_'||id,0 FROM tiendas; INSERT INTO ventas(id_usuario,tipo_venta,fecha_venta,total,estado,estado_pedido,medio_pago,id_direccion_envio,tienda_id) SELECT u.id_usuario,'ONLINE',now(),10,'REGISTRADA','RECIBIDO','CONTRA_ENTREGA',d.id,u.tienda_id FROM usuarios u JOIN direcciones_envio d ON d.tienda_id=u.tienda_id; INSERT INTO detalle_venta(id_venta,id_producto_talla,cantidad,precio_unitario,subtotal) SELECT v.id_venta,pt.id_producto_talla,1,10,10 FROM ventas v JOIN productos p ON p.tienda_id=v.tienda_id JOIN producto_tallas pt ON pt.id_producto=p.id_producto;");
     BootstrapVacioPostgresTest.ejecutar(c,Path.of("src/main/resources/db/bootstrap/B028__checkout_yape_pendiente_rls.sql"));
+    BootstrapVacioPostgresTest.ejecutar(c,Path.of("src/main/resources/db/migration/V26__checkout_invitado_multitienda_candidato.sql"));
+    BootstrapVacioPostgresTest.ejecutar(c,Path.of("src/test/resources/db/checkout-invitado-rls-fixture.sql"));
+    c.createStatement().execute("INSERT INTO transferencia_cuentas_bancarias(id,tienda_id,banco,titular,numero_cuenta,habilitado) SELECT id,id,'BCP','Fixture','0000000',true FROM tiendas");
+    c.createStatement().execute("INSERT INTO usuarios(nombre,apellido,correo,password_hash,id_rol,estado,tienda_id) SELECT 'Fixture','Admin','admin@example.test',u.password_hash,r.id_rol,true,u.tienda_id FROM usuarios u CROSS JOIN roles r WHERE r.nombre_rol='ADMIN'");
     c.createStatement().execute("CREATE FUNCTION public.fixture_fallar_segundo_detalle() RETURNS trigger LANGUAGE plpgsql AS $$ BEGIN IF EXISTS(SELECT 1 FROM public.detalle_venta WHERE id_venta=NEW.id_venta) THEN RAISE EXCEPTION 'Fixture detalle duplicado' USING ERRCODE='23514'; END IF; RETURN NEW; END $$; CREATE TRIGGER fixture_segundo_detalle BEFORE INSERT ON detalle_venta FOR EACH ROW EXECUTE FUNCTION fixture_fallar_segundo_detalle();");
     c.createStatement().execute("INSERT INTO yape_configuracion_tienda(tienda_id,habilitado,numero_yape,titular_yape,qr_url) SELECT id,true,'900000000','Fixture','/fixture' FROM tiendas; INSERT INTO yape_qr_imagen(tienda_id,imagen,tamano_bytes,sha256) SELECT id,decode('00','hex'),1,repeat('a',64) FROM tiendas; UPDATE producto_tallas SET stock=3;");
 
@@ -53,7 +64,7 @@ class BootstrapCheckoutRlsTest {
     pool.setJdbcUrl(pg.verifiedUrl());pool.setUsername("sebas_auth_app");pool.setPassword(password);pool.setMaximumPoolSize(1);pool.setMinimumIdle(0);source=pool;
     var env=new org.springframework.core.env.StandardEnvironment();env.getPropertySources().remove(org.springframework.core.env.StandardEnvironment.SYSTEM_ENVIRONMENT_PROPERTY_SOURCE_NAME);env.getPropertySources().remove(org.springframework.core.env.StandardEnvironment.SYSTEM_PROPERTIES_PROPERTY_SOURCE_NAME);
     var application=new org.springframework.boot.SpringApplication(Config.class);application.setEnvironment(env);
-    try(var context=application.run("--spring.config.location=optional:classpath:/http-rls-empty/","--server.address=127.0.0.1","--server.port=0","--server.forward-headers-strategy=none","--spring.sql.init.mode=never","--spring.jpa.open-in-view=false","--app.rls.auth-enabled=true","--app.jwt.secret="+UUID.randomUUID()+UUID.randomUUID(),"--app.jwt.expiration=600000","--app.cors.allowed-origins=http://fixture.test","--app.tenant.base-domain=example.test","--app.storage.provider=local","--app.upload.dir=target/http-rls-uploads","--logging.level.root=WARN")){
+    try(var context=application.run("--spring.config.location=optional:classpath:/http-rls-empty/","--server.address=127.0.0.1","--server.port=0","--server.forward-headers-strategy=none","--spring.sql.init.mode=never","--spring.jpa.open-in-view=false","--app.rls.auth-enabled=true","--spring.profiles.active=checkout-invitado-test","--sebas.checkout.invitado.enabled=true","--app.jwt.secret="+UUID.randomUUID()+UUID.randomUUID(),"--app.jwt.expiration=600000","--app.cors.allowed-origins=http://fixture.test","--app.tenant.base-domain=example.test","--app.storage.provider=local","--app.upload.dir=target/http-rls-uploads","--logging.level.root=WARN")){
      port=((org.springframework.boot.web.server.context.WebServerApplicationContext)context).getWebServer().getPort();
      var db=context.getBean(org.springframework.jdbc.core.JdbcTemplate.class);assertEquals("sebas_auth_app",db.queryForObject("SELECT current_user",String.class));
      var tx=new org.springframework.transaction.support.TransactionTemplate(context.getBean(com.tiendasebas.tiendasebas.config.TenantJpaTransactionManager.class));
@@ -81,12 +92,95 @@ class BootstrapCheckoutRlsTest {
      TenantContext.setCurrentTenant(2L);try{tx.executeWithoutResult(st->assertEquals(3,db.queryForObject("SELECT stock FROM producto_tallas WHERE id_producto_talla=2",Integer.class)));}finally{TenantContext.clear();}
      TenantContext.setCurrentTenant(1L);try{tx.executeWithoutResult(st->{assertEquals(0,db.queryForObject("SELECT stock FROM producto_tallas WHERE id_producto_talla=1",Integer.class));assertThrows(org.springframework.dao.DataAccessException.class,()->db.update("UPDATE yape_pagos_manuales SET estado='APROBADO'"));st.setRollbackOnly();});}finally{TenantContext.clear();}
 
+     probarCheckoutInvitado(db, tx, json);
     }
    }
   }finally{TenantContext.clear();}
  }
+ private static void probarCheckoutInvitado(
+     org.springframework.jdbc.core.JdbcTemplate db,
+     org.springframework.transaction.support.TransactionTemplate tx, tools.jackson.databind.json.JsonMapper json
+ ) throws Exception {
+  assertEquals(1, db.queryForObject("""
+      SELECT count(*) FROM pg_roles WHERE rolname=current_user AND current_user=session_user
+          AND NOT rolsuper AND NOT rolbypassrls
+      """, Integer.class));
+  assertEquals(0, db.queryForObject("""
+      SELECT count(*) FROM pg_class WHERE relnamespace='public'::regnamespace
+          AND pg_get_userbyid(relowner)=current_user
+      """, Integer.class));
+  conTienda(tx, 1L, () -> db.update("UPDATE producto_tallas SET stock=3 WHERE id_producto_talla=1"));
+  var yape = checkout("fixture-lima", "YAPE", UUID.randomUUID(), 1, 1);
+  assertEquals(200, yape.statusCode(), yape.body());
+  var yapeJson = json.readTree(yape.body());
+  int ventaYape = yapeJson.get("compra").get("idVenta").asInt();
+  String tokenYape = yapeJson.get("tokenAcceso").asText();
+
+  var transferencia = checkout("fixture-cusco", "TRANSFERENCIA", UUID.randomUUID(), 2, 1);
+  assertEquals(200, transferencia.statusCode(), transferencia.body());
+  var transferenciaJson = json.readTree(transferencia.body());
+  int ventaTransferencia = transferenciaJson.get("compra").get("idVenta").asInt();
+  assertEquals(200, detalleInvitado("fixture-lima", ventaYape, tokenYape).statusCode());
+  assertEquals(404, detalleInvitado("fixture-cusco", ventaYape, tokenYape).statusCode());
+  assertEquals(404, detalleInvitado("fixture-lima", ventaYape, transferenciaJson.get("tokenAcceso").asText()).statusCode());
+
+  String admin = login("fixture-lima", "admin@example.test", "Fixture-Auth-2026");
+  var pedidosAdmin = call("fixture-lima", "GET", "/api/ventas/admin", null, admin);
+  assertEquals(200, pedidosAdmin.statusCode(), pedidosAdmin.body());
+  assertTrue(pedidosAdmin.body().contains("\"idVenta\":" + ventaYape));
+  assertFalse(pedidosAdmin.body().contains("\"idVenta\":" + ventaTransferencia));
+
+  conTienda(tx, 1L, () -> {
+   assertEquals(2, db.queryForObject("SELECT stock FROM producto_tallas WHERE id_producto_talla=1", Integer.class));
+   assertEquals(1, db.queryForObject("SELECT count(*) FROM yape_pagos_manuales WHERE id_venta=? AND estado='PENDIENTE' AND usuario_id IS NULL", Integer.class, ventaYape));
+  });
+  conTienda(tx, 2L, () -> {
+   assertEquals(2, db.queryForObject("SELECT stock FROM producto_tallas WHERE id_producto_talla=2", Integer.class));
+   assertEquals(1, db.queryForObject("SELECT count(*) FROM transferencia_pagos_manuales WHERE id_venta=? AND estado='PENDIENTE' AND usuario_id IS NULL", Integer.class, ventaTransferencia));
+  });
+  assertEquals(409, checkout("fixture-lima", "YAPE", UUID.randomUUID(), 1, 3).statusCode());
+  assertEquals(409, checkout("fixture-cusco", "YAPE", UUID.randomUUID(), 1, 1).statusCode());
+
+  UUID clave = UUID.randomUUID();
+  try (var tareas = Executors.newFixedThreadPool(2)) {
+   var primera = tareas.submit(() -> checkout("fixture-lima", "YAPE", clave, 1, 1));
+   var segunda = tareas.submit(() -> checkout("fixture-lima", "YAPE", clave, 1, 1));
+   assertEquals(List.of(200, 409), java.util.stream.Stream.of(primera.get().statusCode(),
+       segunda.get().statusCode()).sorted().toList());
+  }
+  try (var tareas = Executors.newFixedThreadPool(2)) {
+   var primera = tareas.submit(() -> checkout("fixture-lima", "YAPE", UUID.randomUUID(), 1, 1));
+   var segunda = tareas.submit(() -> checkout("fixture-lima", "YAPE", UUID.randomUUID(), 1, 1));
+   assertEquals(List.of(200, 409), java.util.stream.Stream.of(primera.get().statusCode(),
+       segunda.get().statusCode()).sorted().toList());
+  }
+  conTienda(tx, 1L, () -> {
+   assertEquals(0, db.queryForObject("SELECT stock FROM producto_tallas WHERE id_producto_talla=1", Integer.class));
+   assertEquals(3, db.queryForObject("SELECT count(*) FROM checkout_invitado_reintentos", Integer.class));
+  });
+  assertEquals(0, db.queryForObject("SELECT count(*) FROM checkout_invitado_reintentos", Integer.class));
+ }
+
+ private static void conTienda(org.springframework.transaction.support.TransactionTemplate tx, long id, Runnable action) {
+  TenantContext.setCurrentTenant(id);
+  try { tx.executeWithoutResult(status -> action.run()); }
+  finally { TenantContext.clear(); }
+ }
+
+ private static java.net.http.HttpResponse<String> checkout(String host, String medio, UUID clave, int variante, int cantidad)
+     throws Exception {
+  String body = compra(clave.toString(), variante, cantidad).replace("\"YAPE\"", "\"" + medio + "\"");
+  body = body.substring(0, body.length()-1)
+      + ",\"cliente\":{\"nombres\":\"Fixture\",\"apellidos\":\"Local\",\"correo\":\"guest@example.test\",\"telefono\":\"900000000\"}"
+      + ("TRANSFERENCIA".equals(medio) ? ",\"cuentaBancariaId\":2" : "") + "}";
+  return call(host, "POST", "/api/ventas/invitado", body, null);
+ }
+
+ private static java.net.http.HttpResponse<String> detalleInvitado(String host, int idVenta, String token) throws Exception {
+  var request = java.net.http.HttpRequest.newBuilder(java.net.URI.create("http://127.0.0.1:" + port + "/api/ventas/invitado/" + idVenta))
+      .timeout(java.time.Duration.ofSeconds(20)).header("Host", host + ".example.test")
+      .header("X-Checkout-Token", token).GET().build();
+  return java.net.http.HttpClient.newHttpClient().send(request, java.net.http.HttpResponse.BodyHandlers.ofString());
+ }
+
 }
-
-
-
-

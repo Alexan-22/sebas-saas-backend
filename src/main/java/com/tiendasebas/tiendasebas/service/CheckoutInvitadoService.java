@@ -36,7 +36,8 @@ public class CheckoutInvitadoService {
         clientes.registrar(compra.getIdVenta(), solicitud.getCliente());
         idempotencia.recordar(solicitud, compra.getIdVenta());
         String token = accesos.generarAcceso(compra.getIdVenta());
-        return new CompraInvitadoResponse(compra, token);
+        Long cuentaBancariaId = "TRANSFERENCIA".equals(compra.getMedioPago()) ? solicitud.getCuentaBancariaId() : null;
+        return new CompraInvitadoResponse(compra, token, cuentaBancariaId);
     }
 
     @Transactional(readOnly = true)

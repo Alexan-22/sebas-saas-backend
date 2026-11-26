@@ -10,7 +10,9 @@ import java.util.concurrent.TimeUnit;
 
 /** Clúster PostgreSQL privado: no usa servicios existentes ni scripts SQL del proyecto. */
 final class ComercialPostgresFixture implements AutoCloseable {
-    private final Path binaries = Path.of("C:/Program Files/PostgreSQL/17/bin");
+    private final boolean windows = System.getProperty("os.name").startsWith("Windows");
+    private final Path binaries = Path.of(System.getenv().getOrDefault("POSTGRES_TEST_BIN",
+            windows ? "C:/Program Files/PostgreSQL/17/bin" : "/usr/lib/postgresql/17/bin"));
     private final String username = "comercial_fixture";
     private final String password = UUID.randomUUID().toString();
     private Path base, root, data;
@@ -20,8 +22,8 @@ final class ComercialPostgresFixture implements AutoCloseable {
     void start() throws Exception {
         PostgresTestSafety.rejectExternalConfiguration(System.getenv());
         PostgresTestSafety.rejectExternalConfiguration(System.getProperties());
-        for (String exe : List.of("initdb.exe", "pg_ctl.exe", "postgres.exe"))
-            if (!Files.isRegularFile(binaries.resolve(exe))) throw new IllegalStateException("Se requiere PostgreSQL 17 local para esta fixture");
+        for (String exe : List.of("initdb", "pg_ctl", "postgres"))
+            if (!Files.isRegularFile(binario(exe))) throw new IllegalStateException("Se requiere PostgreSQL 17 local para esta fixture");
         base = Path.of("target/comercial-postgres").toAbsolutePath().normalize();
         Files.createDirectories(base);
         base = base.toRealPath();
@@ -31,10 +33,10 @@ final class ComercialPostgresFixture implements AutoCloseable {
         Path passwordFile = root.resolve("init-password.txt");
         try {
             Files.writeString(passwordFile, password, StandardOpenOption.CREATE_NEW);
-            run("initdb.exe", "-D", data.toString(), "--username=" + username,
+            run("initdb", "-D", data.toString(), "--username=" + username,
                     "--auth=scram-sha-256", "--pwfile=" + passwordFile, "--encoding=UTF8", "--locale=C");
         } finally { Files.deleteIfExists(passwordFile); }
-        var server = new ProcessBuilder(binaries.resolve("postgres.exe").toString(), "-D", data.toString(), "-h", "127.0.0.1", "-p", Integer.toString(port))
+        var server = new ProcessBuilder(binario("postgres").toString(), "-D", data.toString(), "-h", "127.0.0.1", "-p", Integer.toString(port))
                 .redirectErrorStream(true).redirectOutput(root.resolve("postgres.log").toFile());
         server.environment().keySet().removeIf(k -> k.toUpperCase(Locale.ROOT).startsWith("PG"));
         var process = server.start();
@@ -52,6 +54,8 @@ final class ComercialPostgresFixture implements AutoCloseable {
             connection.createStatement().execute("CREATE DATABASE comercial_aislado");
         }
         verifiedUrl();
+        System.out.printf("PostgreSQL aislado verificado: servidor=127.0.0.1 puerto=%d base=comercial_aislado usuario=%s%n",
+                port, username);
     }
     String getUsername() { return username; }
     String getPassword() { return password; }
@@ -77,8 +81,12 @@ final class ComercialPostgresFixture implements AutoCloseable {
                 throw new IllegalStateException("El directorio de PostgreSQL no pertenece a esta fixture");
         }
     }
+    private Path binario(String command) {
+        return binaries.resolve(windows ? command + ".exe" : command);
+    }
+
     private void run(String executable, String... args) throws Exception {
-        var command = new ArrayList<String>(); command.add(binaries.resolve(executable).toString()); command.addAll(List.of(args));
+        var command = new ArrayList<String>(); command.add(binario(executable).toString()); command.addAll(List.of(args));
         var builder = new ProcessBuilder(command).redirectErrorStream(true)
                 .redirectOutput(ProcessBuilder.Redirect.appendTo(root.resolve("tools.log").toFile()));
         // Nunca heredar credenciales ni direccionamiento PostgreSQL de otro entorno.
@@ -102,7 +110,7 @@ final class ComercialPostgresFixture implements AutoCloseable {
         if (!owned.startsWith(base) || !owned.getParent().equals(base) || !owned.getFileName().toString().startsWith("fixture-"))
             throw new IllegalStateException("Se rechazó limpiar un directorio ajeno a la fixture");
         if (Files.exists(data.resolve("postmaster.pid")))
-            run("pg_ctl.exe", "-D", data.toString(), "-m", "fast", "-w", "-t", "30", "stop");
+            run("pg_ctl", "-D", data.toString(), "-m", "fast", "-w", "-t", "30", "stop");
         started = false;
         try (var files = Files.walk(owned)) {
             for (Path path : files.sorted(Comparator.reverseOrder()).toList()) Files.delete(path);

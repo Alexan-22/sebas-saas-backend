@@ -264,7 +264,8 @@ public class SecurityConfig {
                         "Authorization",
                         "Content-Type",
                         "Accept",
-                        "X-Storefront-Slug"
+                        "X-Storefront-Slug",
+                        "X-Checkout-Token"
                 )
         );
 

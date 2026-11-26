@@ -95,6 +95,14 @@ BEGIN
         WITH CHECK (tienda_id = NULLIF(current_setting('app.tenant_id', true), '')::bigint)
       $policy$, nombre);
     END IF;
+    -- Una política permisiva previa puede coexistir con la del candidato.
+    -- La política restrictiva mantiene el límite del tenant en todos los casos.
+    EXECUTE format('DROP POLICY IF EXISTS checkout_invitado_limite_tenant ON public.%I', nombre);
+    EXECUTE format($policy$
+      CREATE POLICY checkout_invitado_limite_tenant ON public.%I AS RESTRICTIVE FOR ALL
+      USING (tienda_id = NULLIF(current_setting('app.tenant_id', true), '')::bigint)
+      WITH CHECK (tienda_id = NULLIF(current_setting('app.tenant_id', true), '')::bigint)
+    $policy$, nombre);
   END LOOP;
 END
 $rls$;

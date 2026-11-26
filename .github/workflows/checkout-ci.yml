@@ -1,0 +1,32 @@
+name: Checkout y aislamiento multitienda
+
+on:
+  pull_request:
+    branches: [main]
+
+permissions:
+  contents: read
+
+jobs:
+  checkout-postgres:
+    runs-on: ubuntu-latest
+    timeout-minutes: 20
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          persist-credentials: false
+      - uses: actions/setup-java@v4
+        with:
+          distribution: temurin
+          java-version: '21'
+          cache: maven
+      - name: Instalar herramientas de PostgreSQL
+        run: |
+          sudo apt-get update
+          sudo apt-get install --no-install-recommends -y postgresql
+          echo "POSTGRES_TEST_BIN=$(pg_config --bindir)" >> "$GITHUB_ENV"
+      - name: Compilar y validar checkout en clústeres privados
+        run: >-
+          mvn -B verify
+          -Djava.net.http.allowRestrictedHeaders=host
+          -Dtest=CheckoutInvitadoConfiguracionTest,CheckoutInvitadoMigracionRlsTest,CheckoutInvitadoServiceTest,BootstrapCheckoutRlsTest,YapeCheckoutSafetyTest,TransferenciaImagenTest
