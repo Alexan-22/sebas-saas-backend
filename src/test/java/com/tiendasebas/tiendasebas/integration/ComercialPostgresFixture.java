@@ -36,15 +36,20 @@ final class ComercialPostgresFixture implements AutoCloseable {
             run("initdb", "-D", data.toString(), "--username=" + username,
                     "--auth=scram-sha-256", "--pwfile=" + passwordFile, "--encoding=UTF8", "--locale=C");
         } finally { Files.deleteIfExists(passwordFile); }
-        var server = new ProcessBuilder(binario("postgres").toString(), "-D", data.toString(), "-h", "127.0.0.1", "-p", Integer.toString(port))
-                .redirectErrorStream(true).redirectOutput(root.resolve("postgres.log").toFile());
+        Path serverLog = root.resolve("postgres.log");
+        var server = new ProcessBuilder(binario("postgres").toString(), "-D", data.toString(), "-h", "127.0.0.1",
+                "-p", Integer.toString(port), "-c", "unix_socket_directories=")
+                .redirectErrorStream(true).redirectOutput(serverLog.toFile());
         server.environment().keySet().removeIf(k -> k.toUpperCase(Locale.ROOT).startsWith("PG"));
         var process = server.start();
         long deadline = System.nanoTime() + TimeUnit.SECONDS.toNanos(30);
         while (true) {
             try (var connection = DriverManager.getConnection(url("postgres"), username, password)) { checkDataDirectory(connection); break; }
             catch (java.sql.SQLException ex) {
-                if (!process.isAlive() || System.nanoTime() > deadline) throw new IllegalStateException("No arrancó PostgreSQL privado; revisar postgres.log", ex);
+                if (!process.isAlive() || System.nanoTime() > deadline) {
+                    String startupLog = Files.readString(serverLog).strip();
+                    throw new IllegalStateException("No arrancó PostgreSQL privado en loopback: " + startupLog, ex);
+                }
                 Thread.sleep(200);
             }
         }
